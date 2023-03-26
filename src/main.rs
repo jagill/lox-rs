@@ -1,6 +1,5 @@
 use anyhow::{bail, Result as AnyResult};
 use std::io::Write;
-// use log::{debug, info, warn};
 
 fn main() -> AnyResult<()> {
     let mut args = std::env::args();
@@ -19,7 +18,8 @@ fn main() -> AnyResult<()> {
 
 fn run_file(script_path: &str) -> AnyResult<()> {
     let contents = std::fs::read_to_string(script_path)?;
-    run(&contents)
+    lox::run(&contents);
+    Ok(())
 }
 
 fn run_prompt() -> AnyResult<()> {
@@ -27,7 +27,7 @@ fn run_prompt() -> AnyResult<()> {
     let lines = std::io::stdin().lines();
     for line_res in lines {
         let line = line_res?;
-        run(&line)?;
+        lox::run(&line);
         do_prompt()?;
     }
     Ok(())
@@ -36,10 +36,5 @@ fn run_prompt() -> AnyResult<()> {
 fn do_prompt() -> AnyResult<()> {
     print!("> ");
     std::io::stdout().flush()?;
-    Ok(())
-}
-
-fn run(contents: &str) -> AnyResult<()> {
-    println!("Got > {}", contents);
     Ok(())
 }
