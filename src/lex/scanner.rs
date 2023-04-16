@@ -7,6 +7,7 @@ pub struct Scanner<'a> {
     start: usize,
     current: usize,
     line: usize,
+    eof: bool,
 }
 
 impl<'a> Scanner<'a> {
@@ -17,6 +18,7 @@ impl<'a> Scanner<'a> {
             start: 0,
             current: 0,
             line: 1,
+            eof: false,
         }
     }
 
@@ -67,44 +69,46 @@ impl<'a> Scanner<'a> {
             }
             '/' => {
                 if self.match_next('/') {
-                    while self.peek() != Some('\n') {
-                        self.advance();
-                    }
+                    self.advance_while(|ch| ch != '\n');
                     Comment
                 } else {
                     Slash
                 }
             }
 
+            // String literals, because they can embed newlines and have to be
+            // stripped of their surrounding double-quotes, need special handling.
             '"' => {
-                while let Some(ch) = self.peek() {
-                    self.advance();
-                    match ch {
-                        '"' => {
-                            break;
-                        }
-                        '\n' => {
-                            self.line += 1;
-                        }
-                        _ => (),
+                // Skip initial '"'
+                self.start = self.current;
+                let starting_line = self.line;
+                self.advance_while(|ch| ch != '"');
+                let mut token = Token::new(starting_line, String_, self.current_lexeme());
+                // Skip final '"', but check to make sure everything's ok.
+                match self.advance() {
+                    // The expected case
+                    Some('"') => (),
+                    // This is a bug in our parser, because advance_while should ensure this never happens,
+                    Some(_) => {
+                        let current_line = self.line;
+                        panic!(
+                            r#"String literal parsing finished but next character is not a '"'.
+                        Started on line {starting_line}, error at line {current_line}.
+                        "#
+                        );
+                    }
+                    // Eof before string literal closed.
+                    None => {
+                        token = Token::new(self.line, ErrorUnclosedString, self.current_lexeme());
                     }
                 }
-                String_
+                return Some(token);
             }
 
-            '0'..='9' => {
-                self.advance_number();
-                Number
-            }
+            '0'..='9' => self.advance_number(),
 
             'A'..='Z' | 'a'..='z' | '_' => {
-                while let Some(ch) = self.peek() {
-                    if is_kw_char(ch) {
-                        self.advance();
-                    } else {
-                        break;
-                    }
-                }
+                self.advance_while(is_kw_char);
                 TokenType::get(self.current_lexeme())
             }
 
@@ -117,19 +121,7 @@ impl<'a> Scanner<'a> {
 
     fn skip_whitespace(&mut self) {
         let whitespace_chars = [' ', '\n', '\t', '\r'];
-        let mut did_advance = false;
-        while let Some((_, ch)) = self
-            .char_idxs
-            .next_if(|(_, c)| whitespace_chars.contains(c))
-        {
-            if ch == '\n' {
-                self.line += 1;
-            }
-            did_advance = true;
-        }
-        if did_advance {
-            self.current = self.next_idx();
-        }
+        self.advance_while(|ch| whitespace_chars.contains(&ch));
     }
 
     fn current_lexeme(&self) -> &'a str {
@@ -137,43 +129,58 @@ impl<'a> Scanner<'a> {
     }
 
     // Advance past the rest of the number. It assumes the first digit has already been consumed.
-    fn advance_number(&mut self) {
-        while let Some(ch) = self.peek() {
-            match ch {
-                '0'..='9' => {
-                    self.advance();
-                }
-                '.' => {
-                    // TODO: Handle this
-                    break;
-                }
-                _ => break,
+    fn advance_number(&mut self) -> TokenType {
+        let pred = |ch| '0' <= ch && ch <= '9';
+        self.advance_while(pred);
+
+        // If there's a period, keep matching digits for a float.
+        // If there are no digits, that's a lex error.
+        if self.match_next('.') {
+            if self.advance_if(pred).is_some() {
+                self.advance_while(pred);
+            } else {
+                return TokenType::ErrorMalformedNumber;
             }
+        }
+        TokenType::Number
+    }
+
+    /// Advance to the next char, if any
+    fn advance(&mut self) -> Option<char> {
+        let (_idx, ch) = self.char_idxs.next()?;
+        if ch == '\n' {
+            self.line += 1;
+        }
+        self.current = self.next_idx();
+        Some(ch)
+    }
+
+    /// Advance if the next character matches the predicate.
+    fn advance_if(&mut self, pred: impl Fn(char) -> bool) -> Option<char> {
+        match self.peek()? {
+            next_ch if pred(next_ch) => self.advance(),
+            _ => None,
         }
     }
 
-    // Advance to the next char, if any
-    fn advance(&mut self) -> Option<char> {
-        let (_idx, ch) = self.char_idxs.next()?;
-        self.current = self.next_idx();
-        Some(ch)
+    /// Keep advancing while the predicate is true
+    fn advance_while<F>(&mut self, pred: F)
+    where
+        F: Copy + Fn(char) -> bool,
+    {
+        while self.advance_if(pred).is_some() {}
     }
 
     fn next_idx(&mut self) -> usize {
         self.char_idxs.peek().map_or(self.source.len(), |(i, _)| *i)
     }
 
-    // If the next char is equal to `ch`, advance and return true.  Else, return false.
+    /// If the next char is equal to `ch`, advance and return true.  Else, return false.
     fn match_next(&mut self, ch: char) -> bool {
-        if self.peek() == Some(ch) {
-            self.advance();
-            true
-        } else {
-            false
-        }
+        self.advance_if(|next_ch| ch == next_ch).is_some()
     }
 
-    // Return the next char without advancing.
+    /// Return the next char without advancing.
     fn peek(&mut self) -> Option<char> {
         self.char_idxs.peek().map(|(_i, c)| *c)
     }
@@ -183,10 +190,143 @@ impl<'a> Iterator for Scanner<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Token<'a>> {
-        self.scan_token()
+        if self.eof {
+            None
+        } else {
+            self.scan_token().or_else(|| {
+                self.eof = true;
+                Some(Token {
+                    line: self.line,
+                    typ: Eof,
+                    lexeme: "",
+                })
+            })
+        }
     }
 }
 
 fn is_kw_char(ch: char) -> bool {
     ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z') || ('0' <= ch && ch <= '9') || ch == '_'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Scanner, Token, TokenType};
+
+    fn assert_scan(source: &str, expected: Vec<Token>) {
+        let tokens: Vec<Token> = Scanner::new(source).collect();
+        assert_eq!(tokens, expected);
+    }
+
+    #[test]
+    fn test_empty_scan() {
+        assert_scan("", vec![Token::new(1, TokenType::Eof, "")]);
+    }
+
+    #[test]
+    fn test_empty_whitespace_scan() {
+        assert_scan("  \t ", vec![Token::new(1, TokenType::Eof, "")]);
+    }
+
+    #[test]
+    fn test_empty_whitespace_with_newline_scan() {
+        assert_scan("  \n\r  ", vec![Token::new(2, TokenType::Eof, "")]);
+    }
+
+    #[test]
+    fn test_function_scan() {
+        assert_scan(
+            r#"fun printSum(a, b) {
+            print a + b;
+        }
+        "#,
+            vec![
+                Token::new(1, TokenType::Fun, "fun"),
+                Token::new(1, TokenType::Identifier, "printSum"),
+                Token::new(1, TokenType::LeftParen, "("),
+                Token::new(1, TokenType::Identifier, "a"),
+                Token::new(1, TokenType::Comma, ","),
+                Token::new(1, TokenType::Identifier, "b"),
+                Token::new(1, TokenType::RightParen, ")"),
+                Token::new(1, TokenType::LeftBrace, "{"),
+                Token::new(2, TokenType::Print, "print"),
+                Token::new(2, TokenType::Identifier, "a"),
+                Token::new(2, TokenType::Plus, "+"),
+                Token::new(2, TokenType::Identifier, "b"),
+                Token::new(2, TokenType::Semicolon, ";"),
+                Token::new(3, TokenType::RightBrace, "}"),
+                Token::new(4, TokenType::Eof, ""),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_string_literal_scan() {
+        assert_scan(
+            r#""this is a fun 'literal'""#,
+            vec![
+                Token::new(1, TokenType::String_, "this is a fun 'literal'"),
+                Token::new(1, TokenType::Eof, ""),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_string_literal_unclosed_scan() {
+        assert_scan(
+            "\"a literal\n more",
+            vec![
+                Token::new(2, TokenType::ErrorUnclosedString, "a literal\n more"),
+                Token::new(2, TokenType::Eof, ""),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_comment_scan() {
+        assert_scan(
+            "1 // comment \n 2",
+            vec![
+                Token::new(1, TokenType::Number, "1"),
+                Token::new(1, TokenType::Comment, "// comment "),
+                Token::new(2, TokenType::Number, "2"),
+                Token::new(2, TokenType::Eof, ""),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_number_scan() {
+        assert_scan(
+            "0123",
+            vec![
+                Token::new(1, TokenType::Number, "0123"),
+                Token::new(1, TokenType::Eof, ""),
+            ],
+        );
+
+        assert_scan(
+            "0123.456",
+            vec![
+                Token::new(1, TokenType::Number, "0123.456"),
+                Token::new(1, TokenType::Eof, ""),
+            ],
+        );
+
+        assert_scan(
+            "0.4",
+            vec![
+                Token::new(1, TokenType::Number, "0.4"),
+                Token::new(1, TokenType::Eof, ""),
+            ],
+        );
+
+        assert_scan(
+            "12.",
+            vec![
+                Token::new(1, TokenType::ErrorMalformedNumber, "12."),
+                Token::new(1, TokenType::Eof, ""),
+            ],
+        );
+    }
 }

@@ -49,6 +49,8 @@ pub enum TokenType {
 
     // Error
     ErrorUnknownToken,
+    ErrorUnclosedString,
+    ErrorMalformedNumber,
 }
 
 impl TokenType {
