@@ -1,131 +1,123 @@
 use super::{BinaryOp, Expr, UnaryOp};
 use crate::lex::{Scanner, Token, TokenType, TokenType::*};
+use crate::LoxError;
 use std::iter::Peekable;
 
 pub struct Parser<'a> {
-    tokens: Peekable<Scanner<'a>>, // tokens: Vec<Token<'a>>,
-                                   // current: usize,
+    tokens: Peekable<Scanner<'a>>,
 }
+
+type LoxResult<T> = Result<T, LoxError>;
 
 impl<'a> Parser<'a> {
     pub fn new(scanner: Scanner<'a>) -> Self {
-        // let tokens: Vec<Token<'a>> = scanner.collect();
-        // Self { tokens, current: 0 }
         let tokens = scanner.peekable();
         Self { tokens }
     }
 
-    pub fn parse(&mut self) -> Option<Expr> {
+    pub fn parse(&mut self) -> LoxResult<Expr> {
         self.expression()
     }
 
-    fn expression(&mut self) -> Option<Expr> {
+    pub fn expression(&mut self) -> LoxResult<Expr> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Option<Expr> {
+    fn equality(&mut self) -> LoxResult<Expr> {
         let left = self.comparison()?;
 
         if self.match_next(BangEqual) {
-            return Some(Expr::binary(left, BinaryOp::NotEqual, self.comparison()?));
+            return Ok(Expr::binary(left, BinaryOp::NotEqual, self.comparison()?));
         }
 
         if self.match_next(EqualEqual) {
-            return Some(Expr::binary(left, BinaryOp::Equal, self.comparison()?));
+            return Ok(Expr::binary(left, BinaryOp::Equal, self.comparison()?));
         }
 
-        Some(left)
+        Ok(left)
     }
 
-    fn comparison(&mut self) -> Option<Expr> {
+    fn comparison(&mut self) -> LoxResult<Expr> {
         let left = self.term()?;
 
         if self.match_next(Greater) {
-            return Some(Expr::binary(left, BinaryOp::Greater, self.term()?));
+            return Ok(Expr::binary(left, BinaryOp::Greater, self.term()?));
         }
 
         if self.match_next(GreaterEqual) {
-            return Some(Expr::binary(left, BinaryOp::GreaterEqual, self.term()?));
+            return Ok(Expr::binary(left, BinaryOp::GreaterEqual, self.term()?));
         }
 
         if self.match_next(Less) {
-            return Some(Expr::binary(left, BinaryOp::Less, self.term()?));
+            return Ok(Expr::binary(left, BinaryOp::Less, self.term()?));
         }
 
         if self.match_next(LessEqual) {
-            return Some(Expr::binary(left, BinaryOp::LessEqual, self.term()?));
+            return Ok(Expr::binary(left, BinaryOp::LessEqual, self.term()?));
         }
 
-        Some(left)
+        Ok(left)
     }
 
-    fn term(&mut self) -> Option<Expr> {
+    fn term(&mut self) -> LoxResult<Expr> {
         let left = self.factor()?;
 
         if self.match_next(Minus) {
-            return Some(Expr::binary(left, BinaryOp::Sub, self.factor()?));
+            return Ok(Expr::binary(left, BinaryOp::Sub, self.factor()?));
         }
 
         if self.match_next(Plus) {
-            return Some(Expr::binary(left, BinaryOp::Add, self.factor()?));
+            return Ok(Expr::binary(left, BinaryOp::Add, self.factor()?));
         }
 
-        Some(left)
+        Ok(left)
     }
 
-    fn factor(&mut self) -> Option<Expr> {
+    fn factor(&mut self) -> LoxResult<Expr> {
         let left = self.unary()?;
 
         if self.match_next(Slash) {
-            return Some(Expr::binary(left, BinaryOp::Div, self.unary()?));
+            return Ok(Expr::binary(left, BinaryOp::Div, self.unary()?));
         }
 
         if self.match_next(Star) {
-            return Some(Expr::binary(left, BinaryOp::Mult, self.unary()?));
+            return Ok(Expr::binary(left, BinaryOp::Mult, self.unary()?));
         }
 
-        Some(left)
+        Ok(left)
     }
 
-    fn unary(&mut self) -> Option<Expr> {
+    fn unary(&mut self) -> LoxResult<Expr> {
         if self.match_next(Bang) {
-            return Some(Expr::unary(UnaryOp::Not, self.unary()?));
+            return Ok(Expr::unary(UnaryOp::Not, self.unary()?));
         }
         if self.match_next(Minus) {
-            return Some(Expr::unary(UnaryOp::Minus, self.unary()?));
+            return Ok(Expr::unary(UnaryOp::Minus, self.unary()?));
         }
         self.primary()
     }
 
-    fn primary(&mut self) -> Option<Expr> {
+    fn primary(&mut self) -> LoxResult<Expr> {
         let primary_types = [Nil, False, True, Number, String_, LeftParen];
 
-        let token = self.advance_if(|token| primary_types.contains(&token.typ))?;
+        let token = self.advance_expect("primary expression", |token| {
+            primary_types.contains(&token.typ)
+        })?;
         match token.typ {
-            Nil => Some(Expr::nil()),
-            False => Some(Expr::bool(false)),
-            True => Some(Expr::bool(true)),
+            Nil => Ok(Expr::nil()),
+            False => Ok(Expr::bool(false)),
+            True => Ok(Expr::bool(true)),
             Number => {
-                let num: f64 = token.lexeme().parse().unwrap();
-                Some(Expr::number(num))
+                let num: f64 = token.lexeme.parse().unwrap();
+                Ok(Expr::number(num))
             }
-            String_ => {
-                let val = token
-                    .lexeme()
-                    .strip_prefix(r#"""#)
-                    .expect(r#"String lexeme should start with " "#)
-                    .strip_suffix(r#"""#)
-                    .expect(r#"String lexeme should end with " "#);
-                Some(Expr::string(val))
-            }
+            String_ => Ok(Expr::string(token.lexeme)),
             LeftParen => {
-                let expr = self.expression();
-                // TODO: Handle this with error
-                self.advance_if(|token| token.typ == RightParen)
-                    .expect("Unmatched Parenthesis!");
-                expr
+                let expr = self.expression()?;
+                self.consume(RightParen)?;
+                Ok(Expr::group(expr))
             }
-            _ => None,
+            _ => Err(LoxError::wrong_token(&token, "expression")),
         }
     }
 
@@ -133,11 +125,16 @@ impl<'a> Parser<'a> {
         self.tokens.next()
     }
 
-    fn advance_if(&mut self, pred: impl FnOnce(&Token<'a>) -> bool) -> Option<Token> {
-        if pred(self.peek()?) {
-            self.advance()
+    fn advance_expect(
+        &mut self,
+        message: &str,
+        pred: impl FnOnce(&Token<'a>) -> bool,
+    ) -> LoxResult<Token> {
+        let token = self.peek().ok_or(LoxError::end(message))?;
+        if pred(token) {
+            Ok(self.advance().unwrap())
         } else {
-            None
+            Err(LoxError::wrong_token(token, message))
         }
     }
 
@@ -156,4 +153,178 @@ impl<'a> Parser<'a> {
     fn peek(&mut self) -> Option<&Token<'a>> {
         self.tokens.peek()
     }
+
+    fn consume(&mut self, typ: TokenType) -> LoxResult<Token> {
+        self.advance_expect(&format!("token of type {typ:?}"), |t| t.typ == typ)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lex::Scanner;
+
+    fn assert_parse_expr(source: &str, expected: Result<Expr, LoxError>) {
+        let scanner = Scanner::new(source);
+        let actual = Parser::new(scanner).expression();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_parse_number() {
+        assert_parse_expr("1", Ok(Expr::number(1.0)))
+    }
+
+    #[test]
+    fn test_parse_bool() {
+        assert_parse_expr("true", Ok(Expr::bool(true)))
+    }
+
+    #[test]
+    fn test_parse_unary_num() {
+        assert_parse_expr("-1", Ok(Expr::unary(UnaryOp::Minus, Expr::number(1.0))))
+    }
+
+    #[test]
+    fn test_parse_unary_bool() {
+        assert_parse_expr("!false", Ok(Expr::unary(UnaryOp::Not, Expr::bool(false))))
+    }
+
+    #[test]
+    fn test_parse_binary_num() {
+        assert_parse_expr(
+            "1 + 2",
+            Ok(Expr::binary(
+                Expr::number(1.0),
+                BinaryOp::Add,
+                Expr::number(2.0),
+            )),
+        )
+    }
+
+    #[test]
+    fn test_parse_binary_bool() {
+        assert_parse_expr(
+            "true != false",
+            Ok(Expr::binary(
+                Expr::bool(true),
+                BinaryOp::NotEqual,
+                Expr::bool(false),
+            )),
+        );
+    }
+
+    #[test]
+    fn test_parse_precedence() {
+        assert_parse_expr(
+            "1 + 2 * 3",
+            Ok(Expr::binary(
+                Expr::number(1.),
+                BinaryOp::Add,
+                Expr::binary(Expr::number(2.), BinaryOp::Mult, Expr::number(3.)),
+            )),
+        );
+
+        assert_parse_expr(
+            "1 * 2 + 3",
+            Ok(Expr::binary(
+                Expr::binary(Expr::number(1.), BinaryOp::Mult, Expr::number(2.)),
+                BinaryOp::Add,
+                Expr::number(3.),
+            )),
+        );
+
+        assert_parse_expr(
+            "1 + 2 > 3",
+            Ok(Expr::binary(
+                Expr::binary(Expr::number(1.), BinaryOp::Add, Expr::number(2.)),
+                BinaryOp::Greater,
+                Expr::number(3.),
+            )),
+        );
+
+        assert_parse_expr(
+            "1 <= 2 - 3",
+            Ok(Expr::binary(
+                Expr::number(1.),
+                BinaryOp::LessEqual,
+                Expr::binary(Expr::number(2.), BinaryOp::Sub, Expr::number(3.)),
+            )),
+        );
+    }
+
+    #[test]
+    fn test_parse_grouping() {
+        assert_parse_expr(
+            "(1 + 2) * 3",
+            Ok(Expr::binary(
+                Expr::group(Expr::binary(
+                    Expr::number(1.),
+                    BinaryOp::Add,
+                    Expr::number(2.),
+                )),
+                BinaryOp::Mult,
+                Expr::number(3.),
+            )),
+        );
+    }
+
+    #[test]
+    fn test_parse_string() {
+        assert_parse_expr(r#""abc""#, Ok(Expr::string("abc")));
+        assert_parse_expr("\"a\nb\"", Ok(Expr::string("a\nb")));
+    }
+
+    #[test]
+    fn test_parse_error_eof() {
+        assert_parse_expr(
+            "(",
+            Err(LoxError::wrong_token(
+                &Token::new(1, TokenType::Eof, ""),
+                "primary expression",
+            )),
+        );
+
+        assert_parse_expr(
+            "abc",
+            Err(LoxError::wrong_token(
+                &Token::new(1, TokenType::Identifier, "abc"),
+                "primary expression",
+            )),
+        );
+
+        assert_parse_expr(
+            "(1 2",
+            Err(LoxError::wrong_token(
+                &Token::new(1, TokenType::Number, "2"),
+                "token of type RightParen",
+            )),
+        );
+    }
+
+    // TODO: Not yet implemented
+    // #[test]
+    // fn test_parse_binary_num_ident() {
+    //     assert_parse_expr(
+    //         "1 <= a",
+    //         Ok(Expr::binary(
+    //             Expr::number(1.0),
+    //             BinaryOp::LessEqual,
+    //             Expr::identifier("a"),
+    //         )),
+    //     )
+    // }
+
+    // TODO: Not yet implemented
+    // #[test]
+    // fn test_parse_binary_bool() {
+    //     assert_parse_expr(
+    //         "true or false",
+    //         Ok(Expr::binary(
+    //             Expr::bool(true),
+    //             BinaryOp::Or,
+    //             Expr::bool(false),
+    //         )),
+    //     )
+    // }
 }

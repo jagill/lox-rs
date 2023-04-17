@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Unary {
         op: UnaryOp,
@@ -13,7 +13,7 @@ pub enum Expr {
     Literal(Literal),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     Nil,
     Bool(bool),
@@ -49,9 +49,13 @@ impl Expr {
             right: Box::new(right),
         }
     }
+
+    pub fn group(expr: Expr) -> Self {
+        Expr::Grouping(Box::new(expr))
+    }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     Mult,
     Div,
@@ -65,7 +69,7 @@ pub enum BinaryOp {
     Equal,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     Not,
     Minus,
