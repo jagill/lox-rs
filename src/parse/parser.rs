@@ -1,13 +1,11 @@
 use super::{BinaryOp, Expr, UnaryOp};
 use crate::lex::{Scanner, Token, TokenType, TokenType::*};
-use crate::LoxError;
+use crate::{LoxError, LoxResult};
 use std::iter::Peekable;
 
 pub struct Parser<'a> {
     tokens: Peekable<Scanner<'a>>,
 }
-
-type LoxResult<T> = Result<T, LoxError>;
 
 impl<'a> Parser<'a> {
     pub fn new(scanner: Scanner<'a>) -> Self {

@@ -12,6 +12,8 @@ pub enum LoxError {
         lexeme: String,
         expected: String,
     },
+    #[error("Type error: {expected}.")]
+    TypeError { expected: String },
 }
 
 impl LoxError {
@@ -28,5 +30,9 @@ impl LoxError {
             lexeme: token.lexeme.to_owned(),
             expected: msg.into(),
         }
+    }
+
+    pub fn type_error(msg: impl Into<String>) -> Self {
+        LoxError::TypeError { expected: msg.into() }
     }
 }
