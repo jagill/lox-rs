@@ -1,3 +1,5 @@
+use std::fmt::{Display, Error as FmtError, Formatter};
+
 use crate::parse::Literal;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,6 +25,17 @@ impl Value {
             Value::Nil => false,
             Value::Bool(b) => *b,
             _ => true,
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Self::Nil => write!(f, "nil"),
+            Self::Bool(b) => write!(f, "{b}"),
+            Self::Number(num) => write!(f, "{num}"),
+            Self::String(s) => write!(f, "\"{s}\""),
         }
     }
 }
