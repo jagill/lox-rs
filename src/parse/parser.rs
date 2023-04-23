@@ -1,6 +1,5 @@
-use super::{BinaryOp, Expr, UnaryOp};
+use super::{BinaryOp, Expr, ParseError, ParseResult, UnaryOp};
 use crate::lex::{Scanner, Token, TokenType, TokenType::*};
-use crate::{LoxError, LoxResult};
 use std::iter::Peekable;
 
 pub struct Parser<'a> {
@@ -13,15 +12,15 @@ impl<'a> Parser<'a> {
         Self { tokens }
     }
 
-    pub fn parse(&mut self) -> LoxResult<Expr> {
+    pub fn parse(&mut self) -> ParseResult<Expr> {
         self.expression()
     }
 
-    pub fn expression(&mut self) -> LoxResult<Expr> {
+    pub fn expression(&mut self) -> ParseResult<Expr> {
         self.equality()
     }
 
-    fn equality(&mut self) -> LoxResult<Expr> {
+    fn equality(&mut self) -> ParseResult<Expr> {
         let left = self.comparison()?;
 
         if self.match_next(BangEqual) {
@@ -35,7 +34,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn comparison(&mut self) -> LoxResult<Expr> {
+    fn comparison(&mut self) -> ParseResult<Expr> {
         let left = self.term()?;
 
         if self.match_next(Greater) {
@@ -57,7 +56,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn term(&mut self) -> LoxResult<Expr> {
+    fn term(&mut self) -> ParseResult<Expr> {
         let left = self.factor()?;
 
         if self.match_next(Minus) {
@@ -71,7 +70,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn factor(&mut self) -> LoxResult<Expr> {
+    fn factor(&mut self) -> ParseResult<Expr> {
         let left = self.unary()?;
 
         if self.match_next(Slash) {
@@ -85,7 +84,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn unary(&mut self) -> LoxResult<Expr> {
+    fn unary(&mut self) -> ParseResult<Expr> {
         if self.match_next(Bang) {
             return Ok(Expr::unary(UnaryOp::Not, self.unary()?));
         }
@@ -95,7 +94,7 @@ impl<'a> Parser<'a> {
         self.primary()
     }
 
-    fn primary(&mut self) -> LoxResult<Expr> {
+    fn primary(&mut self) -> ParseResult<Expr> {
         let primary_types = [Nil, False, True, Number, String_, LeftParen];
 
         let token = self.advance_expect("primary expression", |token| {
@@ -115,7 +114,7 @@ impl<'a> Parser<'a> {
                 self.consume(RightParen)?;
                 Ok(Expr::group(expr))
             }
-            _ => Err(LoxError::wrong_token(&token, "expression")),
+            _ => Err(ParseError::wrong_token(&token, "expression")),
         }
     }
 
@@ -127,12 +126,12 @@ impl<'a> Parser<'a> {
         &mut self,
         message: &str,
         pred: impl FnOnce(&Token<'a>) -> bool,
-    ) -> LoxResult<Token> {
-        let token = self.peek().ok_or(LoxError::end(message))?;
+    ) -> ParseResult<Token> {
+        let token = self.peek().ok_or(ParseError::end(message))?;
         if pred(token) {
             Ok(self.advance().unwrap())
         } else {
-            Err(LoxError::wrong_token(token, message))
+            Err(ParseError::wrong_token(token, message))
         }
     }
 
@@ -152,7 +151,7 @@ impl<'a> Parser<'a> {
         self.tokens.peek()
     }
 
-    fn consume(&mut self, typ: TokenType) -> LoxResult<Token> {
+    fn consume(&mut self, typ: TokenType) -> ParseResult<Token> {
         self.advance_expect(&format!("token of type {typ:?}"), |t| t.typ == typ)
     }
 }
@@ -162,7 +161,7 @@ mod tests {
     use super::*;
     use crate::lex::Scanner;
 
-    fn assert_parse_expr(source: &str, expected: Result<Expr, LoxError>) {
+    fn assert_parse_expr(source: &str, expected: Result<Expr, ParseError>) {
         let scanner = Scanner::new(source);
         let actual = Parser::new(scanner).expression();
         assert_eq!(actual, expected);
@@ -277,7 +276,7 @@ mod tests {
     fn test_parse_error_eof() {
         assert_parse_expr(
             "(",
-            Err(LoxError::wrong_token(
+            Err(ParseError::wrong_token(
                 &Token::new(1, TokenType::Eof, ""),
                 "primary expression",
             )),
@@ -285,7 +284,7 @@ mod tests {
 
         assert_parse_expr(
             "abc",
-            Err(LoxError::wrong_token(
+            Err(ParseError::wrong_token(
                 &Token::new(1, TokenType::Identifier, "abc"),
                 "primary expression",
             )),
@@ -293,7 +292,7 @@ mod tests {
 
         assert_parse_expr(
             "(1 2",
-            Err(LoxError::wrong_token(
+            Err(ParseError::wrong_token(
                 &Token::new(1, TokenType::Number, "2"),
                 "token of type RightParen",
             )),

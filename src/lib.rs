@@ -1,17 +1,34 @@
 // use log::{debug, info, warn};
-mod errors;
 pub mod interpreter;
 pub mod lex;
 pub mod parse;
 
-use errors::LoxError;
-use interpreter::Interpreter;
+use interpreter::{Interpreter, RuntimeError};
 use lex::Scanner;
-use parse::Parser;
+use parse::{ParseError, Parser};
+use thiserror::Error;
 
-type LoxResult<T> = Result<T, LoxError>;
+#[derive(Debug, Error)]
+pub enum LoxError {
+    #[error("Parsing error: {}", 0)]
+    Parse(ParseError),
+    #[error("Runtime error: {}", 0)]
+    Runtime(RuntimeError),
+}
 
-pub fn run(contents: &str) -> LoxResult<()> {
+impl From<ParseError> for LoxError {
+    fn from(err: ParseError) -> Self {
+        Self::Parse(err)
+    }
+}
+
+impl From<RuntimeError> for LoxError {
+    fn from(err: RuntimeError) -> Self {
+        Self::Runtime(err)
+    }
+}
+
+pub fn run(contents: &str) -> Result<(), LoxError> {
     let scanner = Scanner::new(contents);
     let mut parser = Parser::new(scanner);
     let ast = parser.parse()?;

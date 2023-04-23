@@ -1,6 +1,6 @@
 use super::Value;
-use crate::parse::{Expr, BinaryOp, UnaryOp};
-use crate::{LoxError, LoxResult};
+use super::{RuntimeError, RuntimeResult};
+use crate::parse::{BinaryOp, Expr, UnaryOp};
 
 pub struct Interpreter {}
 
@@ -9,7 +9,7 @@ impl Interpreter {
         Interpreter {}
     }
 
-    pub fn interpret(&self, expr: &Expr) -> LoxResult<Value> {
+    pub fn interpret(&self, expr: &Expr) -> RuntimeResult<Value> {
         match expr {
             Expr::Literal(lit) => Ok(Value::of(lit)),
             Expr::Grouping(expr) => self.interpret(expr),
@@ -25,48 +25,48 @@ impl Interpreter {
         }
     }
 
-    fn unary(&self, op: UnaryOp, value: &Value) -> LoxResult<Value> {
+    fn unary(&self, op: UnaryOp, value: &Value) -> RuntimeResult<Value> {
         match (op, value) {
             (UnaryOp::Minus, Value::Number(num)) => Ok(Value::Number(-*num)),
             (UnaryOp::Not, val) => Ok(Value::Bool(!val.is_truthy())),
-            _ => Err(LoxError::type_error(format!(
+            _ => Err(RuntimeError::type_error(format!(
                 "Can't combine {op:?} and {value:?}"
             ))),
         }
     }
 
-    fn binary(&self, left_val: &Value, op: BinaryOp, right_val: &Value) -> LoxResult<Value> {
+    fn binary(&self, left_val: &Value, op: BinaryOp, right_val: &Value) -> RuntimeResult<Value> {
         match (left_val, op, right_val) {
             (left, BinaryOp::Equal, right) => Ok(Value::Bool(left == right)),
             (left, BinaryOp::NotEqual, right) => Ok(Value::Bool(left != right)),
-            (Value::Number(left), BinaryOp::Mult, Value::Number(right)) => Ok(Value::Number(
-                left * right
-            )),
-            (Value::Number(left), BinaryOp::Div, Value::Number(right)) => Ok(Value::Number(
-                left / right
-            )),
-            (Value::Number(left), BinaryOp::Add, Value::Number(right)) => Ok(Value::Number(
-                left + right
-            )),
-            (Value::Number(left), BinaryOp::Sub, Value::Number(right)) => Ok(Value::Number(
-                left - right
-            )),
-            (Value::String(left), BinaryOp::Add, Value::String(right)) => Ok(Value::String(
-                format!("{left}{right}")
-            )),
-            (Value::Number(left), BinaryOp::Greater, Value::Number(right)) => Ok(Value::Bool(
-                left > right
-            )),
-            (Value::Number(left), BinaryOp::GreaterEqual, Value::Number(right)) => Ok(Value::Bool(
-                left >= right
-            )),
-            (Value::Number(left), BinaryOp::Less, Value::Number(right)) => Ok(Value::Bool(
-                left < right
-            )),
-            (Value::Number(left), BinaryOp::LessEqual, Value::Number(right)) => Ok(Value::Bool(
-                left <= right
-            )),
-            _ => Err(LoxError::type_error(format!(
+            (Value::Number(left), BinaryOp::Mult, Value::Number(right)) => {
+                Ok(Value::Number(left * right))
+            }
+            (Value::Number(left), BinaryOp::Div, Value::Number(right)) => {
+                Ok(Value::Number(left / right))
+            }
+            (Value::Number(left), BinaryOp::Add, Value::Number(right)) => {
+                Ok(Value::Number(left + right))
+            }
+            (Value::Number(left), BinaryOp::Sub, Value::Number(right)) => {
+                Ok(Value::Number(left - right))
+            }
+            (Value::String(left), BinaryOp::Add, Value::String(right)) => {
+                Ok(Value::String(format!("{left}{right}")))
+            }
+            (Value::Number(left), BinaryOp::Greater, Value::Number(right)) => {
+                Ok(Value::Bool(left > right))
+            }
+            (Value::Number(left), BinaryOp::GreaterEqual, Value::Number(right)) => {
+                Ok(Value::Bool(left >= right))
+            }
+            (Value::Number(left), BinaryOp::Less, Value::Number(right)) => {
+                Ok(Value::Bool(left < right))
+            }
+            (Value::Number(left), BinaryOp::LessEqual, Value::Number(right)) => {
+                Ok(Value::Bool(left <= right))
+            }
+            _ => Err(RuntimeError::type_error(format!(
                 "Can't combine {left_val:?} and {right_val:?} with {op:?}"
             ))),
         }
@@ -79,7 +79,7 @@ mod tests {
 
     use super::*;
 
-    fn assert_value(source: &str, expected: LoxResult<Value>) {
+    fn assert_value(source: &str, expected: RuntimeResult<Value>) {
         let interp = Interpreter::new();
         let scanner = Scanner::new(source);
         let ast = Parser::new(scanner).expression().unwrap();
@@ -110,7 +110,7 @@ mod tests {
         assert_value("-1", Ok(Value::Number(-1.)));
         assert_value("!true", Ok(Value::Bool(false)));
         assert_value("!nil", Ok(Value::Bool(true)));
-        assert_value("-false", Err(LoxError::type_error("")));
+        assert_value("-false", Err(RuntimeError::type_error("")));
     }
 
     #[test]
@@ -121,7 +121,7 @@ mod tests {
         assert_value("2 >= 1", Ok(Value::Bool(true)));
         assert_value("2 * 1.01", Ok(Value::Number(2.02)));
         assert_value(r#""a" + "b""#, Ok(Value::String("ab".to_owned())));
-        assert_value("1 + false", Err(LoxError::type_error("")));
+        assert_value("1 + false", Err(RuntimeError::type_error("")));
     }
 
     #[test]
