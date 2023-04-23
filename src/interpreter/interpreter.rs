@@ -1,6 +1,6 @@
 use super::Value;
 use super::{RuntimeError, RuntimeResult};
-use crate::parse::{BinaryOp, Expr, UnaryOp};
+use crate::parse::{BinaryOp, Expr, Stmt, UnaryOp};
 
 pub struct Interpreter {}
 
@@ -9,17 +9,37 @@ impl Interpreter {
         Interpreter {}
     }
 
-    pub fn interpret(&self, expr: &Expr) -> RuntimeResult<Value> {
+    pub fn interpret(&self, stmts: &[Stmt]) -> RuntimeResult<()> {
+        for stmt in stmts {
+            self.statement(stmt)?;
+        }
+        Ok(())
+    }
+
+    pub fn statement(&self, stmt: &Stmt) -> RuntimeResult<()> {
+        match stmt {
+            Stmt::Expression(expr) => {
+                self.expression(expr)?;
+            }
+            Stmt::Print(expr) => {
+                let value = self.expression(expr)?;
+                println!("{}", value);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn expression(&self, expr: &Expr) -> RuntimeResult<Value> {
         match expr {
             Expr::Literal(lit) => Ok(Value::of(lit)),
-            Expr::Grouping(expr) => self.interpret(expr),
+            Expr::Grouping(expr) => self.expression(expr),
             Expr::Unary { op, right } => {
-                let value = self.interpret(right)?;
+                let value = self.expression(right)?;
                 self.unary(*op, &value)
             }
             Expr::Binary { left, op, right } => {
-                let left_val = self.interpret(left)?;
-                let right_val = self.interpret(right)?;
+                let left_val = self.expression(left)?;
+                let right_val = self.expression(right)?;
                 self.binary(&left_val, *op, &right_val)
             }
         }
@@ -79,11 +99,11 @@ mod tests {
 
     use super::*;
 
-    fn assert_value(source: &str, expected: RuntimeResult<Value>) {
+    fn assert_expression(source: &str, expected: RuntimeResult<Value>) {
         let interp = Interpreter::new();
         let scanner = Scanner::new(source);
         let ast = Parser::new(scanner).expression().unwrap();
-        let actual = interp.interpret(&ast);
+        let actual = interp.expression(&ast);
         match (&actual, &expected) {
             (Err(actual_err), Err(expected_err)) => assert_eq!(
                 std::mem::discriminant(actual_err),
@@ -93,39 +113,60 @@ mod tests {
         }
     }
 
+    fn assert_statement(source: &str, success: bool) {
+        let interp = Interpreter::new();
+        let scanner = Scanner::new(source);
+        let ast = Parser::new(scanner).statement().unwrap();
+        let actual = interp.statement(&ast);
+        assert_eq!(actual.is_ok(), success);
+    }
+
     #[test]
     fn test_interpret_literals() {
-        assert_value("1", Ok(Value::Number(1.)));
-        assert_value("false", Ok(Value::Bool(false)));
-        assert_value(r#""abc""#, Ok(Value::String("abc".to_owned())));
+        assert_expression("1", Ok(Value::Number(1.)));
+        assert_expression("false", Ok(Value::Bool(false)));
+        assert_expression(r#""abc""#, Ok(Value::String("abc".to_owned())));
     }
 
     #[test]
     fn test_interpret_group() {
-        assert_value("(1)", Ok(Value::Number(1.)));
+        assert_expression("(1)", Ok(Value::Number(1.)));
     }
 
     #[test]
     fn test_interpret_unary() {
-        assert_value("-1", Ok(Value::Number(-1.)));
-        assert_value("!true", Ok(Value::Bool(false)));
-        assert_value("!nil", Ok(Value::Bool(true)));
-        assert_value("-false", Err(RuntimeError::type_error("")));
+        assert_expression("-1", Ok(Value::Number(-1.)));
+        assert_expression("!true", Ok(Value::Bool(false)));
+        assert_expression("!nil", Ok(Value::Bool(true)));
+        assert_expression("-false", Err(RuntimeError::type_error("")));
     }
 
     #[test]
     fn test_interpret_binary() {
-        assert_value("1-1", Ok(Value::Number(0.)));
-        assert_value("true != false", Ok(Value::Bool(true)));
-        assert_value("true == 1", Ok(Value::Bool(false)));
-        assert_value("2 >= 1", Ok(Value::Bool(true)));
-        assert_value("2 * 1.01", Ok(Value::Number(2.02)));
-        assert_value(r#""a" + "b""#, Ok(Value::String("ab".to_owned())));
-        assert_value("1 + false", Err(RuntimeError::type_error("")));
+        assert_expression("1-1", Ok(Value::Number(0.)));
+        assert_expression("true != false", Ok(Value::Bool(true)));
+        assert_expression("true == 1", Ok(Value::Bool(false)));
+        assert_expression("2 >= 1", Ok(Value::Bool(true)));
+        assert_expression("2 * 1.01", Ok(Value::Number(2.02)));
+        assert_expression(r#""a" + "b""#, Ok(Value::String("ab".to_owned())));
+        assert_expression("1 + false", Err(RuntimeError::type_error("")));
     }
 
     #[test]
     fn test_interpret_complex() {
-        assert_value("2 > (2 * 1.01)", Ok(Value::Bool(false)));
+        assert_expression("2 > (2 * 1.01)", Ok(Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_interpret_statement_expr() {
+        assert_statement("1;", true);
+        assert_statement("print 1;", true);
+    }
+
+    #[test]
+    fn test_interpret_statements() {
+        assert_statement(r#"
+        print "one"; print true; print 2 + 1;
+        "#, true)
     }
 }

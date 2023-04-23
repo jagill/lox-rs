@@ -31,8 +31,8 @@ impl From<RuntimeError> for LoxError {
 pub fn run(contents: &str) -> Result<(), LoxError> {
     let scanner = Scanner::new(contents);
     let mut parser = Parser::new(scanner);
-    let ast = parser.parse()?;
+    let statements = parser.parse()?;
     let interp = Interpreter::new();
-    println!("{:?}", interp.interpret(&ast)?);
+    println!("{:?}", interp.interpret(&statements)?);
     Ok(())
 }

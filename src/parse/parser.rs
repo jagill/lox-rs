@@ -1,4 +1,4 @@
-use super::{BinaryOp, Expr, ParseError, ParseResult, UnaryOp};
+use super::{BinaryOp, Expr, ParseError, ParseResult, Stmt, UnaryOp};
 use crate::lex::{Scanner, Token, TokenType, TokenType::*};
 use std::iter::Peekable;
 
@@ -12,8 +12,31 @@ impl<'a> Parser<'a> {
         Self { tokens }
     }
 
-    pub fn parse(&mut self) -> ParseResult<Expr> {
-        self.expression()
+    fn is_done(&mut self) -> bool {
+        match self.peek().map(|t| t.typ) {
+            None | Some(TokenType::Eof) => true,
+            _ => false,
+        }
+    }
+
+    pub fn parse(&mut self) -> ParseResult<Vec<Stmt>> {
+        let mut statements: Vec<Stmt> = Vec::new();
+        while !self.is_done() {
+            statements.push(self.statement()?);
+        }
+        Ok(statements)
+    }
+
+    pub fn statement(&mut self) -> ParseResult<Stmt> {
+        if self.match_next(TokenType::Print) {
+            let value = self.expression()?;
+            self.consume(TokenType::Semicolon)?;
+            Ok(Stmt::Print(value))
+        } else {
+            let expr = self.expression()?;
+            self.consume(TokenType::Semicolon)?;
+            Ok(Stmt::Expression(expr))
+        }
     }
 
     pub fn expression(&mut self) -> ParseResult<Expr> {
@@ -164,7 +187,25 @@ mod tests {
     fn assert_parse_expr(source: &str, expected: Result<Expr, ParseError>) {
         let scanner = Scanner::new(source);
         let actual = Parser::new(scanner).expression();
-        assert_eq!(actual, expected);
+        match (&actual, &expected) {
+            (Err(actual_err), Err(expected_err)) => assert_eq!(
+                std::mem::discriminant(actual_err),
+                std::mem::discriminant(expected_err)
+            ),
+            _ => assert_eq!(actual, expected),
+        }
+    }
+
+    fn assert_parse_stmt(source: &str, expected: Result<Stmt, ParseError>) {
+        let scanner = Scanner::new(source);
+        let actual = Parser::new(scanner).statement();
+        match (&actual, &expected) {
+            (Err(actual_err), Err(expected_err)) => assert_eq!(
+                std::mem::discriminant(actual_err),
+                std::mem::discriminant(expected_err)
+            ),
+            _ => assert_eq!(actual, expected),
+        }
     }
 
     #[test]
@@ -324,4 +365,41 @@ mod tests {
     //         )),
     //     )
     // }
+
+    #[test]
+    fn test_parse_stmt_expr() {
+        assert_parse_stmt("1;", Ok(Stmt::Expression(Expr::number(1.))));
+        assert_parse_stmt(
+            "1",
+            Err(ParseError::UnexpectedToken {
+                actual: TokenType::Eof,
+                line: 1,
+                lexeme: "".to_owned(),
+                expected: "".to_owned(),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_parse_stmt_print() {
+        assert_parse_stmt("print 1;", Ok(Stmt::Print(Expr::number(1.))));
+        assert_parse_stmt(
+            "print 1",
+            Err(ParseError::UnexpectedToken {
+                actual: TokenType::Eof,
+                line: 1,
+                lexeme: "".to_owned(),
+                expected: "".to_owned(),
+            }),
+        );
+        assert_parse_stmt(
+            "print print",
+            Err(ParseError::UnexpectedToken {
+                actual: TokenType::Print,
+                line: 1,
+                lexeme: "print".to_owned(),
+                expected: "".to_owned(),
+            }),
+        );
+    }
 }
