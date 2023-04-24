@@ -13,7 +13,7 @@ impl<'a> Parser<'a> {
     }
 
     fn is_done(&mut self) -> bool {
-        match self.peek().map(|t| t.typ) {
+        match self.peek_type() {
             None | Some(TokenType::Eof) => true,
             _ => false,
         }
@@ -42,15 +42,25 @@ impl<'a> Parser<'a> {
     }
 
     pub fn statement(&mut self) -> ParseResult<Stmt> {
+        // Print statement
         if self.match_next(TokenType::Print) {
             let value = self.expression()?;
             self.consume(TokenType::Semicolon)?;
-            Ok(Stmt::Print(value))
-        } else {
-            let expr = self.expression()?;
-            self.consume(TokenType::Semicolon)?;
-            Ok(Stmt::Expression(expr))
+            return Ok(Stmt::Print(value));
         }
+        // Block
+        if self.match_next(TokenType::LeftBrace) {
+            let mut statements = Vec::new();
+            while self.peek_type() != Some(TokenType::RightBrace) {
+                statements.push(self.declaration()?);
+            }
+            self.consume(TokenType::RightBrace)?;
+            return Ok(Stmt::Block(statements));
+        }
+        // Expression statement
+        let expr = self.expression()?;
+        self.consume(TokenType::Semicolon)?;
+        Ok(Stmt::Expression(expr))
     }
 
     pub fn expression(&mut self) -> ParseResult<Expr> {
@@ -189,6 +199,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Advance only if the next token is of the given type
     fn advance_only(&mut self, typ: TokenType) -> Option<Token> {
         if self.peek()?.typ == typ {
             self.advance()
@@ -203,6 +214,10 @@ impl<'a> Parser<'a> {
 
     fn peek(&mut self) -> Option<&Token<'a>> {
         self.tokens.peek()
+    }
+
+    fn peek_type(&mut self) -> Option<TokenType> {
+        self.tokens.peek().map(|t| t.typ)
     }
 
     fn consume(&mut self, typ: TokenType) -> ParseResult<Token> {
@@ -468,5 +483,27 @@ mod tests {
     fn test_parse_assignment() {
         assert_parse_expr("a = 4", Ok(Expr::assign("a", Expr::number(4.))));
         assert_parse_expr("a + b = c", Err(ParseError::InvalidAssignment { line: 1 }));
+    }
+
+    #[test]
+    fn test_parse_block() {
+        assert_parse_stmt(
+            "{ 1; 2;}",
+            Ok(Stmt::Block(vec![
+                Stmt::Expression(Expr::number(1.)),
+                Stmt::Expression(Expr::number(2.)),
+            ])),
+        );
+    }
+
+    #[test]
+    fn test_parse_nested_block() {
+        assert_parse_stmt(
+            "{ 1; { 2; } }",
+            Ok(Stmt::Block(vec![
+                Stmt::Expression(Expr::number(1.)),
+                Stmt::Block(vec![Stmt::Expression(Expr::number(2.))]),
+            ])),
+        );
     }
 }

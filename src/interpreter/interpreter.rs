@@ -13,6 +13,18 @@ impl Interpreter {
         }
     }
 
+    fn push_env(&mut self) {
+        let old_env = std::mem::replace(&mut self.env, Environment::new());
+        self.env = Environment::with(old_env);
+    }
+
+    fn pop_env(&mut self) {
+        let old_env = std::mem::replace(&mut self.env, Environment::new());
+        self.env = old_env
+            .pop()
+            .expect("Attempted to pop a global environment");
+    }
+
     pub fn interpret(&mut self, stmts: &[Stmt]) -> RuntimeResult<()> {
         for stmt in stmts {
             self.statement(stmt)?;
@@ -35,6 +47,18 @@ impl Interpreter {
             Stmt::Print(expr) => {
                 let value = self.expression(expr)?;
                 println!("{}", value);
+            }
+            Stmt::Block(statements) => {
+                self.push_env();
+                let mut res: RuntimeResult<()> = Ok(());
+                for stmt in statements {
+                    res = self.statement(stmt);
+                    if res.is_err() {
+                        break;
+                    }
+                }
+                self.pop_env();
+                res?;
             }
         }
         Ok(())
@@ -197,6 +221,34 @@ mod tests {
         var a = 1;
         var b = 2;
         print a + b;
+        "#,
+            true,
+        );
+    }
+
+    #[test]
+    fn test_interpret_blocks() {
+        assert_statement(
+            r#"
+        var a = "global a";
+        var b = "global b";
+        var c = "global c";
+        {
+            var a = "outer a";
+            var b = "outer b";
+            {
+                var a = "inner a";
+                print a;
+                print b;
+                print c;
+            }
+            print a;
+            print b;
+            print c;
+        }
+        print a;
+        print b;
+        print c;
         "#,
             true,
         );
