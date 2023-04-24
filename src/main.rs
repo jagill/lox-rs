@@ -30,7 +30,10 @@ fn run_prompt() -> AnyResult<()> {
     let lines = std::io::stdin().lines();
     for line_res in lines {
         let line = line_res?;
-        runtime.run(&line)?;
+        match runtime.run(&line) {
+            Err(e) => println!("{e}"),
+            Ok(()) => (),
+        }
         do_prompt()?;
     }
     Ok(())

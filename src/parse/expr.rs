@@ -12,6 +12,10 @@ pub enum Expr {
     Grouping(Box<Expr>),
     Literal(Literal),
     Variable(String),
+    Assign {
+        name: String,
+        expr: Box<Expr>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +60,13 @@ impl Expr {
 
     pub fn group(expr: Expr) -> Self {
         Expr::Grouping(Box::new(expr))
+    }
+
+    pub fn assign(name: impl Into<String>, expr: Expr) -> Self {
+        Expr::Assign {
+            name: name.into(),
+            expr: Box::new(expr),
+        }
     }
 }
 

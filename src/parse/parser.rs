@@ -54,7 +54,23 @@ impl<'a> Parser<'a> {
     }
 
     pub fn expression(&mut self) -> ParseResult<Expr> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> ParseResult<Expr> {
+        let expr = self.equality()?;
+
+        if let Some(token) = self.advance_only(Equal) {
+            let line = token.line;
+            let value = self.assignment()?;
+            return if let Expr::Variable(name) = expr {
+                Ok(Expr::assign(name, value))
+            } else {
+                Err(ParseError::InvalidAssignment { line })
+            };
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> ParseResult<Expr> {
@@ -446,5 +462,11 @@ mod tests {
                 expected: "".to_owned(),
             }),
         );
+    }
+
+    #[test]
+    fn test_parse_assignment() {
+        assert_parse_expr("a = 4", Ok(Expr::assign("a", Expr::number(4.))));
+        assert_parse_expr("a + b = c", Err(ParseError::InvalidAssignment { line: 1 }));
     }
 }

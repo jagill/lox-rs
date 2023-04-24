@@ -40,7 +40,7 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn expression(&self, expr: &Expr) -> RuntimeResult<Value> {
+    pub fn expression(&mut self, expr: &Expr) -> RuntimeResult<Value> {
         match expr {
             Expr::Literal(lit) => Ok(Value::of(lit)),
             Expr::Grouping(expr) => self.expression(expr),
@@ -56,6 +56,11 @@ impl Interpreter {
             Expr::Variable(name) => {
                 let val_opt = self.env.get(name)?.as_ref();
                 let val = val_opt.map_or(Value::Nil, |v| v.clone());
+                Ok(val)
+            }
+            Expr::Assign { name, expr } => {
+                let val = self.expression(expr)?;
+                self.env.assign(name, Some(val.clone()))?;
                 Ok(val)
             }
         }
@@ -116,7 +121,7 @@ mod tests {
     use super::*;
 
     fn assert_expression(source: &str, expected: RuntimeResult<Value>) {
-        let interp = Interpreter::new();
+        let mut interp = Interpreter::new();
         let scanner = Scanner::new(source);
         let ast = Parser::new(scanner).expression().unwrap();
         let actual = interp.expression(&ast);

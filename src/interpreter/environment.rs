@@ -12,14 +12,22 @@ impl Environment {
         }
     }
 
-    pub fn define(&mut self, name: impl ToString, value: Option<Value>) {
-        let name = name.to_string();
-        self.values.insert(name, value);
+    pub fn define(&mut self, name: &str, value: Option<Value>) {
+        self.values.insert(name.to_owned(), value);
     }
 
     pub fn get(&self, name: &str) -> RuntimeResult<&Option<Value>> {
         let val = self.values.get(name);
         let res = val.ok_or(RuntimeError::unbound_var(name));
         res
+    }
+
+    pub fn assign(&mut self, name: &str, value: Option<Value>) -> RuntimeResult<()> {
+        if self.values.contains_key(name) {
+            self.values.insert(name.to_owned(), value);
+            Ok(())
+        } else {
+            Err(RuntimeError::unbound_var(name))
+        }
     }
 }

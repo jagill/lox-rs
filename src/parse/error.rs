@@ -12,6 +12,8 @@ pub enum ParseError {
         lexeme: String,
         expected: String,
     },
+    #[error("Invalid assignment target on line {line}.")]
+    InvalidAssignment { line: usize },
 }
 
 impl ParseError {
