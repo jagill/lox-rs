@@ -5,14 +5,15 @@ pub mod parse;
 
 use interpreter::{Interpreter, RuntimeError};
 use lex::Scanner;
+use parse::Stmt;
 use parse::{ParseError, Parser};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum LoxError {
-    #[error("Parsing error: {}", 0)]
+    #[error("Parsing error: {0}")]
     Parse(ParseError),
-    #[error("Runtime error: {}", 0)]
+    #[error("Runtime error: {0}")]
     Runtime(RuntimeError),
 }
 
@@ -28,11 +29,30 @@ impl From<RuntimeError> for LoxError {
     }
 }
 
-pub fn run(contents: &str) -> Result<(), LoxError> {
-    let scanner = Scanner::new(contents);
-    let mut parser = Parser::new(scanner);
-    let statements = parser.parse()?;
-    let interp = Interpreter::new();
-    println!("{:?}", interp.interpret(&statements)?);
-    Ok(())
+pub struct Lox {
+    interpreter: Interpreter,
+}
+
+impl Lox {
+    pub fn new() -> Self {
+        Self {
+            interpreter: Interpreter::new(),
+        }
+    }
+
+    pub fn run(&mut self, contents: &str) -> Result<(), LoxError> {
+        let statements = self.parse(contents)?;
+        self.interpret(&statements)?;
+        Ok(())
+    }
+
+    fn parse(&self, contents: &str) -> Result<Vec<Stmt>, ParseError> {
+        let scanner = Scanner::new(contents);
+        let mut parser = Parser::new(scanner);
+        parser.parse()
+    }
+
+    fn interpret(&mut self, statements: &[Stmt]) -> Result<(), RuntimeError> {
+        self.interpreter.interpret(statements)
+    }
 }

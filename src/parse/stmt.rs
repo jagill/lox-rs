@@ -4,4 +4,8 @@ use super::Expr;
 pub enum Stmt {
     Expression(Expr),
     Print(Expr),
+    Var {
+        name: String,
+        initializer: Option<Expr>,
+    },
 }

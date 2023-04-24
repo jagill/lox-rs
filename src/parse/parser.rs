@@ -22,9 +22,23 @@ impl<'a> Parser<'a> {
     pub fn parse(&mut self) -> ParseResult<Vec<Stmt>> {
         let mut statements: Vec<Stmt> = Vec::new();
         while !self.is_done() {
-            statements.push(self.statement()?);
+            statements.push(self.declaration()?);
         }
         Ok(statements)
+    }
+
+    pub fn declaration(&mut self) -> ParseResult<Stmt> {
+        if self.match_next(TokenType::Var) {
+            let name = self.consume(TokenType::Identifier)?.lexeme.to_owned();
+            let initializer = self
+                .match_next(TokenType::Equal)
+                .then(|| self.expression())
+                .transpose()?;
+            self.consume(TokenType::Semicolon)?;
+            Ok(Stmt::Var { name, initializer })
+        } else {
+            self.statement()
+        }
     }
 
     pub fn statement(&mut self) -> ParseResult<Stmt> {
@@ -118,7 +132,7 @@ impl<'a> Parser<'a> {
     }
 
     fn primary(&mut self) -> ParseResult<Expr> {
-        let primary_types = [Nil, False, True, Number, String_, LeftParen];
+        let primary_types = [Nil, False, True, Number, String_, Identifier, LeftParen];
 
         let token = self.advance_expect("primary expression", |token| {
             primary_types.contains(&token.typ)
@@ -137,6 +151,7 @@ impl<'a> Parser<'a> {
                 self.consume(RightParen)?;
                 Ok(Expr::group(expr))
             }
+            Identifier => Ok(Expr::var(token.lexeme)),
             _ => Err(ParseError::wrong_token(&token, "expression")),
         }
     }
@@ -198,7 +213,7 @@ mod tests {
 
     fn assert_parse_stmt(source: &str, expected: Result<Stmt, ParseError>) {
         let scanner = Scanner::new(source);
-        let actual = Parser::new(scanner).statement();
+        let actual = Parser::new(scanner).declaration();
         match (&actual, &expected) {
             (Err(actual_err), Err(expected_err)) => assert_eq!(
                 std::mem::discriminant(actual_err),
@@ -216,6 +231,11 @@ mod tests {
     #[test]
     fn test_parse_bool() {
         assert_parse_expr("true", Ok(Expr::bool(true)))
+    }
+
+    #[test]
+    fn test_parse_var() {
+        assert_parse_expr("abc", Ok(Expr::var("abc")))
     }
 
     #[test]
@@ -324,14 +344,6 @@ mod tests {
         );
 
         assert_parse_expr(
-            "abc",
-            Err(ParseError::wrong_token(
-                &Token::new(1, TokenType::Identifier, "abc"),
-                "primary expression",
-            )),
-        );
-
-        assert_parse_expr(
             "(1 2",
             Err(ParseError::wrong_token(
                 &Token::new(1, TokenType::Number, "2"),
@@ -340,18 +352,17 @@ mod tests {
         );
     }
 
-    // TODO: Not yet implemented
-    // #[test]
-    // fn test_parse_binary_num_ident() {
-    //     assert_parse_expr(
-    //         "1 <= a",
-    //         Ok(Expr::binary(
-    //             Expr::number(1.0),
-    //             BinaryOp::LessEqual,
-    //             Expr::identifier("a"),
-    //         )),
-    //     )
-    // }
+    #[test]
+    fn test_parse_binary_num_ident() {
+        assert_parse_expr(
+            "1 <= a",
+            Ok(Expr::binary(
+                Expr::number(1.0),
+                BinaryOp::LessEqual,
+                Expr::var("a"),
+            )),
+        )
+    }
 
     // TODO: Not yet implemented
     // #[test]
@@ -398,6 +409,40 @@ mod tests {
                 actual: TokenType::Print,
                 line: 1,
                 lexeme: "print".to_owned(),
+                expected: "".to_owned(),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_parse_var_decl() {
+        assert_parse_stmt(
+            "var a = 1;",
+            Ok(Stmt::Var {
+                name: "a".to_owned(),
+                initializer: Some(Expr::number(1.0)),
+            }),
+        );
+        assert_parse_stmt(
+            "var = 1;",
+            Err(ParseError::UnexpectedToken {
+                actual: TokenType::Equal,
+                line: 1,
+                lexeme: "=".to_owned(),
+                expected: "".to_owned(),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_parse_var_use() {
+        assert_parse_stmt("print a;", Ok(Stmt::Print(Expr::var("a"))));
+        assert_parse_stmt(
+            "print a",
+            Err(ParseError::UnexpectedToken {
+                actual: TokenType::Eof,
+                line: 1,
+                lexeme: "".to_owned(),
                 expected: "".to_owned(),
             }),
         );

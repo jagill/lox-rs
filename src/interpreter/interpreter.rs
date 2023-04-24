@@ -1,23 +1,34 @@
 use super::Value;
-use super::{RuntimeError, RuntimeResult};
+use super::{Environment, RuntimeError, RuntimeResult};
 use crate::parse::{BinaryOp, Expr, Stmt, UnaryOp};
 
-pub struct Interpreter {}
+pub struct Interpreter {
+    env: Environment,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter {}
+        Self {
+            env: Environment::new(),
+        }
     }
 
-    pub fn interpret(&self, stmts: &[Stmt]) -> RuntimeResult<()> {
+    pub fn interpret(&mut self, stmts: &[Stmt]) -> RuntimeResult<()> {
         for stmt in stmts {
             self.statement(stmt)?;
         }
         Ok(())
     }
 
-    pub fn statement(&self, stmt: &Stmt) -> RuntimeResult<()> {
+    pub fn statement(&mut self, stmt: &Stmt) -> RuntimeResult<()> {
         match stmt {
+            Stmt::Var { name, initializer } => {
+                let value = initializer
+                    .as_ref()
+                    .map(|expr| self.expression(expr))
+                    .transpose()?;
+                self.env.define(name, value);
+            }
             Stmt::Expression(expr) => {
                 self.expression(expr)?;
             }
@@ -41,6 +52,11 @@ impl Interpreter {
                 let left_val = self.expression(left)?;
                 let right_val = self.expression(right)?;
                 self.binary(&left_val, *op, &right_val)
+            }
+            Expr::Variable(name) => {
+                let val_opt = self.env.get(name)?.as_ref();
+                let val = val_opt.map_or(Value::Nil, |v| v.clone());
+                Ok(val)
             }
         }
     }
@@ -114,9 +130,9 @@ mod tests {
     }
 
     fn assert_statement(source: &str, success: bool) {
-        let interp = Interpreter::new();
+        let mut interp = Interpreter::new();
         let scanner = Scanner::new(source);
-        let ast = Parser::new(scanner).statement().unwrap();
+        let ast = Parser::new(scanner).declaration().unwrap();
         let actual = interp.statement(&ast);
         assert_eq!(actual.is_ok(), success);
     }
@@ -165,8 +181,19 @@ mod tests {
 
     #[test]
     fn test_interpret_statements() {
-        assert_statement(r#"
+        assert_statement(
+            r#"
         print "one"; print true; print 2 + 1;
-        "#, true)
+        "#,
+            true,
+        );
+        assert_statement(
+            r#"
+        var a = 1;
+        var b = 2;
+        print a + b;
+        "#,
+            true,
+        );
     }
 }

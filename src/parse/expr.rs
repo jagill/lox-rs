@@ -11,6 +11,7 @@ pub enum Expr {
     },
     Grouping(Box<Expr>),
     Literal(Literal),
+    Variable(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +34,9 @@ impl Expr {
     }
     pub fn string(s: &str) -> Self {
         Expr::Literal(Literal::String(s.to_owned()))
+    }
+    pub fn var(s: &str) -> Self {
+        Expr::Variable(s.to_owned())
     }
 
     pub fn unary(op: UnaryOp, right: Expr) -> Self {
