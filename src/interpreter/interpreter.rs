@@ -40,13 +40,26 @@ impl Interpreter {
                     .map(|expr| self.expression(expr))
                     .transpose()?;
                 self.env.define(name, value);
+                Ok(())
             }
-            Stmt::Expression(expr) => {
-                self.expression(expr)?;
+            Stmt::Expression(expr) => self.expression(expr).map(|_| ()),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if self.expression(condition)?.is_truthy() {
+                    self.statement(&then_branch)
+                } else if let Some(else_br) = else_branch {
+                    self.statement(else_br)
+                } else {
+                    Ok(())
+                }
             }
             Stmt::Print(expr) => {
                 let value = self.expression(expr)?;
                 println!("{}", value);
+                Ok(())
             }
             Stmt::Block(statements) => {
                 self.push_env();
@@ -58,10 +71,9 @@ impl Interpreter {
                     }
                 }
                 self.pop_env();
-                res?;
+                res
             }
         }
-        Ok(())
     }
 
     pub fn expression(&mut self, expr: &Expr) -> RuntimeResult<Value> {
@@ -163,7 +175,12 @@ mod tests {
         let scanner = Scanner::new(source);
         let ast = Parser::new(scanner).declaration().unwrap();
         let actual = interp.statement(&ast);
-        assert_eq!(actual.is_ok(), success);
+        match (success, actual.is_ok()) {
+            (true, true) => (),
+            (false, false) => (),
+            (true, false) => assert_eq!(Ok(()), actual),
+            (false, true) => panic!("Interpret should fail, but succeeded."),
+        }
     }
 
     #[test]
@@ -252,5 +269,12 @@ mod tests {
         "#,
             true,
         );
+    }
+
+    #[test]
+    fn test_if_stmt() {
+        assert_statement("if (true) 1;", true);
+        assert_statement("if (true) 1; else 2;", true);
+        assert_statement("if (true) if (true) 1; else 2;", true)
     }
 }

@@ -57,6 +57,25 @@ impl<'a> Parser<'a> {
             self.consume(TokenType::RightBrace)?;
             return Ok(Stmt::Block(statements));
         }
+        // If
+        if self.match_next(TokenType::If) {
+            self.consume(TokenType::LeftParen)?;
+            let condition = self.expression()?;
+            self.consume(TokenType::RightParen)?;
+
+            let then_branch = self.statement()?;
+            let else_branch = if self.match_next(TokenType::Else) {
+                Some(self.statement()?)
+            } else {
+                None
+            };
+
+            return Ok(Stmt::If {
+                condition,
+                then_branch: Box::new(then_branch),
+                else_branch: else_branch.map(Box::new),
+            });
+        }
         // Expression statement
         let expr = self.expression()?;
         self.consume(TokenType::Semicolon)?;
@@ -505,5 +524,59 @@ mod tests {
                 Stmt::Block(vec![Stmt::Expression(Expr::number(2.))]),
             ])),
         );
+    }
+
+    #[test]
+    fn test_if_stmt() {
+        assert_parse_stmt(
+            "if (true) 1;",
+            Ok(Stmt::If {
+                condition: Expr::bool(true),
+                then_branch: Box::new(Stmt::Expression(Expr::number(1.))),
+                else_branch: None,
+            }),
+        );
+        assert_parse_stmt(
+            "if true 1;",
+            Err(ParseError::UnexpectedToken {
+                actual: TokenType::True,
+                line: 1,
+                lexeme: "true".to_owned(),
+                expected: "".to_owned(),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_if_else_stmt() {
+        assert_parse_stmt(
+            "if (true) 1; else 2;",
+            Ok(Stmt::If {
+                condition: Expr::bool(true),
+                then_branch: Box::new(Stmt::Expression(Expr::number(1.))),
+                else_branch: Some(Box::new(Stmt::Expression(Expr::number(2.)))),
+            }),
+        );
+        assert_parse_stmt(
+            "if (true) 1; else 2",
+            Err(ParseError::UnexpectedToken {
+                actual: TokenType::Eof,
+                line: 1,
+                lexeme: "".to_owned(),
+                expected: "".to_owned(),
+            }),
+        );
+        assert_parse_stmt(
+            "if (first) if (second) 1; else 2;",
+            Ok(Stmt::If {
+                condition: Expr::var("first"),
+                then_branch: Box::new(Stmt::If {
+                    condition: Expr::var("second"),
+                    then_branch: Box::new(Stmt::Expression(Expr::number(1.))),
+                    else_branch: Some(Box::new(Stmt::Expression(Expr::number(2.)))),
+                }),
+                else_branch: None,
+            }),
+        )
     }
 }
