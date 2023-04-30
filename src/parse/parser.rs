@@ -29,54 +29,121 @@ impl<'a> Parser<'a> {
 
     pub fn declaration(&mut self) -> ParseResult<Stmt> {
         if self.match_next(TokenType::Var) {
-            let name = self.consume(TokenType::Identifier)?.lexeme.to_owned();
-            let initializer = self
-                .match_next(TokenType::Equal)
-                .then(|| self.expression())
-                .transpose()?;
-            self.consume(TokenType::Semicolon)?;
-            Ok(Stmt::Var { name, initializer })
+            self.var_decl()
         } else {
             self.statement()
         }
     }
 
+    fn var_decl(&mut self) -> ParseResult<Stmt> {
+        let name = self.consume(TokenType::Identifier)?.lexeme.to_owned();
+        let initializer = self
+            .match_next(TokenType::Equal)
+            .then(|| self.expression())
+            .transpose()?;
+        self.consume(TokenType::Semicolon)?;
+        Ok(Stmt::Var { name, initializer })
+    }
+
     pub fn statement(&mut self) -> ParseResult<Stmt> {
-        // Print statement
-        if self.match_next(TokenType::Print) {
-            let value = self.expression()?;
-            self.consume(TokenType::Semicolon)?;
-            return Ok(Stmt::Print(value));
-        }
-        // Block
-        if self.match_next(TokenType::LeftBrace) {
-            let mut statements = Vec::new();
-            while self.peek_type() != Some(TokenType::RightBrace) {
-                statements.push(self.declaration()?);
+        use TokenType::*;
+
+        match self
+            .advance_any_of(&[Print, LeftBrace, If, While, For])
+            .map(|t| t.typ)
+        {
+            Some(Print) => {
+                let value = self.expression()?;
+                self.consume(TokenType::Semicolon)?;
+                Ok(Stmt::Print(value))
             }
-            self.consume(TokenType::RightBrace)?;
-            return Ok(Stmt::Block(statements));
-        }
-        // If
-        if self.match_next(TokenType::If) {
-            self.consume(TokenType::LeftParen)?;
-            let condition = self.expression()?;
-            self.consume(TokenType::RightParen)?;
+            Some(LeftBrace) => {
+                let mut statements = Vec::new();
+                while self.peek_type() != Some(TokenType::RightBrace) {
+                    statements.push(self.declaration()?);
+                }
+                self.consume(TokenType::RightBrace)?;
+                Ok(Stmt::Block(statements))
+            }
+            Some(If) => {
+                self.consume(TokenType::LeftParen)?;
+                let condition = self.expression()?;
+                self.consume(TokenType::RightParen)?;
 
-            let then_branch = self.statement()?;
-            let else_branch = if self.match_next(TokenType::Else) {
-                Some(self.statement()?)
-            } else {
-                None
-            };
+                let then_branch = self.statement()?;
+                let else_branch = if self.match_next(TokenType::Else) {
+                    Some(self.statement()?)
+                } else {
+                    None
+                };
 
-            return Ok(Stmt::If {
-                condition,
-                then_branch: Box::new(then_branch),
-                else_branch: else_branch.map(Box::new),
-            });
+                Ok(Stmt::If {
+                    condition,
+                    then_branch: Box::new(then_branch),
+                    else_branch: else_branch.map(Box::new),
+                })
+            }
+            Some(While) => {
+                self.consume(TokenType::LeftParen)?;
+                let condition = self.expression()?;
+                self.consume(TokenType::RightParen)?;
+                let body = self.statement()?;
+
+                Ok(Stmt::While {
+                    condition,
+                    body: Box::new(body),
+                })
+            }
+            Some(For) => {
+                self.consume(TokenType::LeftParen)?;
+
+                let initializer: Option<Stmt> = if self.match_next(Semicolon) {
+                    None
+                } else if self.match_next(Var) {
+                    Some(self.var_decl()?)
+                } else {
+                    Some(self.expr_stmt()?)
+                };
+
+                let condition = if self.match_next(Semicolon) {
+                    None
+                } else {
+                    let expr = self.expression()?;
+                    self.consume(Semicolon)?;
+                    Some(expr)
+                };
+
+                let increment = if self.match_next(Semicolon) {
+                    None
+                } else {
+                    let expr = self.expression()?;
+                    self.consume(Semicolon)?;
+                    Some(expr)
+                };
+
+                let mut body = self.statement()?;
+
+                if let Some(incr) = increment {
+                    body = Stmt::Block(vec![body, Stmt::Expression(incr)]);
+                }
+
+                body = Stmt::While {
+                    condition: condition.unwrap_or(Expr::bool(true)),
+                    body: Box::new(body),
+                };
+
+                if let Some(init) = initializer {
+                    body = Stmt::Block(vec![init, body]);
+                }
+
+                Ok(body)
+            }
+            // Expression statement
+            _ => self.expr_stmt(),
         }
-        // Expression statement
+    }
+
+    fn expr_stmt(&mut self) -> ParseResult<Stmt> {
         let expr = self.expression()?;
         self.consume(TokenType::Semicolon)?;
         Ok(Stmt::Expression(expr))
@@ -235,6 +302,14 @@ impl<'a> Parser<'a> {
             Ok(self.advance().unwrap())
         } else {
             Err(ParseError::wrong_token(token, message))
+        }
+    }
+
+    fn advance_any_of(&mut self, typs: &[TokenType]) -> Option<Token> {
+        if typs.contains(&self.peek()?.typ) {
+            self.advance()
+        } else {
+            None
         }
     }
 

@@ -14,4 +14,8 @@ pub enum Stmt {
         initializer: Option<Expr>,
     },
     Block(Vec<Stmt>),
+    While {
+        condition: Expr,
+        body: Box<Stmt>,
+    },
 }

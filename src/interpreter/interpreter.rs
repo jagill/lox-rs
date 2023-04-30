@@ -73,6 +73,12 @@ impl Interpreter {
                 self.pop_env();
                 res
             }
+            Stmt::While { condition, body } => {
+                while self.expression(condition)?.is_truthy() {
+                    self.statement(body)?;
+                }
+                Ok(())
+            }
         }
     }
 
@@ -291,5 +297,22 @@ mod tests {
         assert_expression(r#" "hi" and 2 "#, Ok(Value::Number(2.)));
         assert_expression(r#" nil or "yes" "#, Ok(Value::String("yes".to_owned())));
         assert_expression(r#" nil and "yes" "#, Ok(Value::Nil));
+    }
+
+    #[test]
+    fn test_loop_stmt() {
+        assert_statement("var going = true; while (going) going = false;", true);
+        assert_statement(
+            r#"
+        var a = 0;
+        var temp;
+        for (var b = 1; a < 10000; b = temp + b) {
+            print a;
+            temp = a;
+            a = b;
+        }
+        "#,
+            true,
+        );
     }
 }
