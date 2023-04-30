@@ -16,6 +16,11 @@ pub enum Expr {
         name: String,
         expr: Box<Expr>,
     },
+    Logical {
+        left: Box<Expr>,
+        op: LogicalOp,
+        right: Box<Expr>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,6 +73,14 @@ impl Expr {
             expr: Box::new(expr),
         }
     }
+
+    pub fn logical(left: Expr, op: LogicalOp, right: Expr) -> Self {
+        Expr::Logical {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -88,4 +101,10 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Not,
     Minus,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum LogicalOp {
+    And,
+    Or,
 }

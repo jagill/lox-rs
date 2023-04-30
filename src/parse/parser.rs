@@ -1,4 +1,4 @@
-use super::{BinaryOp, Expr, ParseError, ParseResult, Stmt, UnaryOp};
+use super::{BinaryOp, Expr, LogicalOp, ParseError, ParseResult, Stmt, UnaryOp};
 use crate::lex::{Scanner, Token, TokenType, TokenType::*};
 use std::iter::Peekable;
 
@@ -87,7 +87,7 @@ impl<'a> Parser<'a> {
     }
 
     fn assignment(&mut self) -> ParseResult<Expr> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if let Some(token) = self.advance_only(Equal) {
             let line = token.line;
@@ -97,6 +97,26 @@ impl<'a> Parser<'a> {
             } else {
                 Err(ParseError::InvalidAssignment { line })
             };
+        }
+
+        Ok(expr)
+    }
+
+    fn or(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.and()?;
+
+        while self.match_next(Or) {
+            expr = Expr::logical(expr, LogicalOp::Or, self.and()?);
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.equality()?;
+
+        while self.match_next(And) {
+            expr = Expr::logical(expr, LogicalOp::And, self.equality()?);
         }
 
         Ok(expr)

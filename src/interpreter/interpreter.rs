@@ -1,6 +1,6 @@
 use super::Value;
 use super::{Environment, RuntimeError, RuntimeResult};
-use crate::parse::{BinaryOp, Expr, Stmt, UnaryOp};
+use crate::parse::{BinaryOp, Expr, LogicalOp, Stmt, UnaryOp};
 
 pub struct Interpreter {
     env: Environment,
@@ -98,6 +98,13 @@ impl Interpreter {
                 let val = self.expression(expr)?;
                 self.env.assign(name, Some(val.clone()))?;
                 Ok(val)
+            }
+            Expr::Logical { left, op, right } => {
+                let left_val = self.expression(left)?;
+                match (left_val.is_truthy(), op) {
+                    (true, LogicalOp::Or) | (false, LogicalOp::And) => Ok(left_val),
+                    (false, LogicalOp::Or) | (true, LogicalOp::And) => self.expression(right),
+                }
             }
         }
     }
@@ -276,5 +283,13 @@ mod tests {
         assert_statement("if (true) 1;", true);
         assert_statement("if (true) 1; else 2;", true);
         assert_statement("if (true) if (true) 1; else 2;", true)
+    }
+
+    #[test]
+    fn test_logical_expr() {
+        assert_expression(r#" "hi" or 2 "#, Ok(Value::String("hi".to_owned())));
+        assert_expression(r#" "hi" and 2 "#, Ok(Value::Number(2.)));
+        assert_expression(r#" nil or "yes" "#, Ok(Value::String("yes".to_owned())));
+        assert_expression(r#" nil and "yes" "#, Ok(Value::Nil));
     }
 }
