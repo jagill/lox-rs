@@ -39,7 +39,7 @@ impl Interpreter {
                     .as_ref()
                     .map(|expr| self.expression(expr))
                     .transpose()?;
-                self.env.define(name, value);
+                self.env.define(name, value.unwrap_or(Value::Nil));
                 Ok(())
             }
             Stmt::Expression(expr) => self.expression(expr).map(|_| ()),
@@ -95,14 +95,10 @@ impl Interpreter {
                 let right_val = self.expression(right)?;
                 self.binary(&left_val, *op, &right_val)
             }
-            Expr::Variable(name) => {
-                let val_opt = self.env.get(name)?.as_ref();
-                let val = val_opt.map_or(Value::Nil, |v| v.clone());
-                Ok(val)
-            }
+            Expr::Variable(name) => self.env.get(name).map(|v| v.clone()),
             Expr::Assign { name, expr } => {
                 let val = self.expression(expr)?;
-                self.env.assign(name, Some(val.clone()))?;
+                self.env.assign(name, val.clone())?;
                 Ok(val)
             }
             Expr::Logical { left, op, right } => {
