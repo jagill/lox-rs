@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::Value;
 use super::{Environment, RuntimeError, RuntimeResult};
 use crate::parse::{BinaryOp, Expr, LogicalOp, Stmt, UnaryOp};
@@ -8,21 +10,11 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {
-            env: Environment::new(),
-        }
-    }
-
-    fn push_env(&mut self) {
-        let old_env = std::mem::replace(&mut self.env, Environment::new());
-        self.env = Environment::with(old_env);
-    }
-
-    fn pop_env(&mut self) {
-        let old_env = std::mem::replace(&mut self.env, Environment::new());
-        self.env = old_env
-            .pop()
-            .expect("Attempted to pop a global environment");
+        // TODO: Replace this with one that is populated.
+        let mut env = Environment::global(HashMap::new());
+        // Initialize a top-level local env.  The globals are not mutable.
+        env.push();
+        Self { env }
     }
 
     pub fn interpret(&mut self, stmts: &[Stmt]) -> RuntimeResult<()> {
@@ -39,8 +31,7 @@ impl Interpreter {
                     .as_ref()
                     .map(|expr| self.expression(expr))
                     .transpose()?;
-                self.env.define(name, value.unwrap_or(Value::Nil));
-                Ok(())
+                self.env.define(name, value.unwrap_or(Value::Nil))
             }
             Stmt::Expression(expr) => self.expression(expr).map(|_| ()),
             Stmt::If {
@@ -62,7 +53,7 @@ impl Interpreter {
                 Ok(())
             }
             Stmt::Block(statements) => {
-                self.push_env();
+                self.env.push();
                 let mut res: RuntimeResult<()> = Ok(());
                 for stmt in statements {
                     res = self.statement(stmt);
@@ -70,7 +61,7 @@ impl Interpreter {
                         break;
                     }
                 }
-                self.pop_env();
+                self.env.pop();
                 res
             }
             Stmt::While { condition, body } => {
