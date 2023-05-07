@@ -16,8 +16,10 @@ pub enum Environment {
 }
 
 impl Environment {
-    pub fn global(values: HashMap<String, Value>) -> Self {
-        Environment::Global(Rc::new(GlobalEnvironment { values }))
+    pub fn with_globals(values: HashMap<String, Value>) -> Self {
+        let mut env = Environment::Global(Rc::new(GlobalEnvironment { values }));
+        env.push();
+        env
     }
 
     pub fn local(enclosing: Environment) -> Self {
@@ -34,9 +36,13 @@ impl Environment {
         }))
     }
 
-    pub fn globals(&self) -> Rc<GlobalEnvironment> {
+    pub fn globals(&self) -> Environment {
         match self {
-            Environment::Global(env) => env.clone(),
+            Environment::Global(env) => {
+                let mut env = Environment::Global(env.clone());
+                env.push();
+                env
+            }
             Environment::Local(env) => env.enclosing.globals(),
         }
     }

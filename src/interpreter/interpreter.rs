@@ -4,99 +4,95 @@ use super::Value;
 use super::{Environment, RuntimeError, RuntimeResult};
 use crate::parse::{BinaryOp, Expr, LogicalOp, Stmt, UnaryOp};
 
-pub struct Interpreter {
-    env: Environment,
-}
+pub struct Interpreter {}
 
 impl Interpreter {
     pub fn new() -> Self {
-        // TODO: Replace this with one that is populated.
-        let mut env = Environment::global(HashMap::new());
-        // Initialize a top-level local env.  The globals are not mutable.
-        env.push();
-        Self { env }
+        Self {}
     }
 
-    pub fn interpret(&mut self, stmts: &[Stmt]) -> RuntimeResult<()> {
+    pub fn interpret(&self, stmts: &[Stmt]) -> RuntimeResult<()> {
+        // TODO: Replace this with one that is populated.
+        let mut env = Environment::with_globals(HashMap::new());
         for stmt in stmts {
-            self.statement(stmt)?;
+            self.statement(stmt, &mut env)?;
         }
         Ok(())
     }
 
-    pub fn statement(&mut self, stmt: &Stmt) -> RuntimeResult<()> {
+    pub fn statement(&self, stmt: &Stmt, env: &mut Environment) -> RuntimeResult<()> {
         match stmt {
             Stmt::Var { name, initializer } => {
                 let value = initializer
                     .as_ref()
-                    .map(|expr| self.expression(expr))
+                    .map(|expr| self.expression(expr, env))
                     .transpose()?;
-                self.env.define(name, value.unwrap_or(Value::Nil))
+                env.define(name, value.unwrap_or(Value::Nil))
             }
-            Stmt::Expression(expr) => self.expression(expr).map(|_| ()),
+            Stmt::Expression(expr) => self.expression(expr, env).map(|_| ()),
             Stmt::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                if self.expression(condition)?.is_truthy() {
-                    self.statement(&then_branch)
+                if self.expression(condition, env)?.is_truthy() {
+                    self.statement(&then_branch, env)
                 } else if let Some(else_br) = else_branch {
-                    self.statement(else_br)
+                    self.statement(else_br, env)
                 } else {
                     Ok(())
                 }
             }
             Stmt::Print(expr) => {
-                let value = self.expression(expr)?;
+                let value = self.expression(expr, env)?;
                 println!("{}", value);
                 Ok(())
             }
             Stmt::Block(statements) => {
-                self.env.push();
+                env.push();
                 let mut res: RuntimeResult<()> = Ok(());
                 for stmt in statements {
-                    res = self.statement(stmt);
+                    res = self.statement(stmt, env);
                     if res.is_err() {
                         break;
                     }
                 }
-                self.env.pop();
+                env.pop();
                 res
             }
             Stmt::While { condition, body } => {
-                while self.expression(condition)?.is_truthy() {
-                    self.statement(body)?;
+                while self.expression(condition, env)?.is_truthy() {
+                    self.statement(body, env)?;
                 }
                 Ok(())
             }
         }
     }
 
-    pub fn expression(&mut self, expr: &Expr) -> RuntimeResult<Value> {
+    pub fn expression(&self, expr: &Expr, env: &mut Environment) -> RuntimeResult<Value> {
         match expr {
             Expr::Literal(lit) => Ok(Value::of(lit)),
-            Expr::Grouping(expr) => self.expression(expr),
+            Expr::Grouping(expr) => self.expression(expr, env),
             Expr::Unary { op, right } => {
-                let value = self.expression(right)?;
+                let value = self.expression(right, env)?;
                 self.unary(*op, &value)
             }
             Expr::Binary { left, op, right } => {
-                let left_val = self.expression(left)?;
-                let right_val = self.expression(right)?;
+                let left_val = self.expression(left, env)?;
+                let right_val = self.expression(right, env)?;
                 self.binary(&left_val, *op, &right_val)
             }
-            Expr::Variable(name) => self.env.get(name).map(|v| v.clone()),
+            Expr::Variable(name) => env.get(name).map(|v| v.clone()),
             Expr::Assign { name, expr } => {
-                let val = self.expression(expr)?;
-                self.env.assign(name, val.clone())?;
+                let val = self.expression(expr, env)?;
+                env.assign(name, val.clone())?;
                 Ok(val)
             }
             Expr::Logical { left, op, right } => {
-                let left_val = self.expression(left)?;
+                let left_val = self.expression(left, env)?;
                 match (left_val.is_truthy(), op) {
                     (true, LogicalOp::Or) | (false, LogicalOp::And) => Ok(left_val),
-                    (false, LogicalOp::Or) | (true, LogicalOp::And) => self.expression(right),
+                    (false, LogicalOp::Or) | (true, LogicalOp::And) => self.expression(right, env),
                 }
             }
         }
@@ -157,10 +153,11 @@ mod tests {
     use super::*;
 
     fn assert_expression(source: &str, expected: RuntimeResult<Value>) {
-        let mut interp = Interpreter::new();
+        let interp = Interpreter::new();
+        let mut env = Environment::with_globals(HashMap::new());
         let scanner = Scanner::new(source);
         let ast = Parser::new(scanner).expression().unwrap();
-        let actual = interp.expression(&ast);
+        let actual = interp.expression(&ast, &mut env);
         match (&actual, &expected) {
             (Err(actual_err), Err(expected_err)) => assert_eq!(
                 std::mem::discriminant(actual_err),
@@ -171,10 +168,11 @@ mod tests {
     }
 
     fn assert_statement(source: &str, success: bool) {
-        let mut interp = Interpreter::new();
+        let interp = Interpreter::new();
+        let mut env = Environment::with_globals(HashMap::new());
         let scanner = Scanner::new(source);
         let ast = Parser::new(scanner).declaration().unwrap();
-        let actual = interp.statement(&ast);
+        let actual = interp.statement(&ast, &mut env);
         match (success, actual.is_ok()) {
             (true, true) => (),
             (false, false) => (),
