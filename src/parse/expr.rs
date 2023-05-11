@@ -21,6 +21,10 @@ pub enum Expr {
         op: LogicalOp,
         right: Box<Expr>,
     },
+    Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

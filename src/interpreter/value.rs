@@ -1,6 +1,6 @@
 use std::fmt::{Display, Error as FmtError, Formatter};
 
-use crate::parse::Literal;
+use crate::parse::{Literal, LoxFunction};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -8,6 +8,7 @@ pub enum Value {
     Bool(bool),
     Number(f64),
     String(String),
+    Function(LoxFunction),
 }
 
 impl Value {
@@ -36,6 +37,16 @@ impl Display for Value {
             Self::Bool(b) => write!(f, "{b}"),
             Self::Number(num) => write!(f, "{num}"),
             Self::String(s) => write!(f, "\"{s}\""),
+            Self::Function(func) => {
+                write!(f, "func {}(", func.name())?;
+                for (idx, param) in func.params().iter().enumerate() {
+                    if idx != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{param}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

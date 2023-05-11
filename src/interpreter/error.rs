@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use super::Value;
+
 #[derive(Debug, Error, PartialEq)]
 pub enum RuntimeError {
     #[error("Type error: {expected}.")]
@@ -10,6 +12,14 @@ pub enum RuntimeError {
     AssigningGlobal { name: String },
     #[error("Trying to define a global variable: {name}.")]
     DefiningGlobal { name: String },
+    #[error("Trying to call {name} (arity {arity}) with {num_args} arguments.")]
+    ArityMismatch {
+        name: String,
+        arity: usize,
+        num_args: usize,
+    },
+    #[error("Trying to call a non-callable value: {value}")]
+    CallingNonCallable { value: Value },
 }
 
 impl RuntimeError {

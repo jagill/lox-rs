@@ -14,6 +14,8 @@ pub enum ParseError {
     },
     #[error("Invalid assignment target on line {line}.")]
     InvalidAssignment { line: usize },
+    #[error("Arguments to a function are capped at 255 (line {line})")]
+    TooManyArguments { line: usize },
 }
 
 impl ParseError {

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::Value;
 use super::{Environment, RuntimeError, RuntimeResult};
-use crate::parse::{BinaryOp, Expr, LogicalOp, Stmt, UnaryOp};
+use crate::parse::{BinaryOp, Expr, LogicalOp, LoxFunction, Stmt, UnaryOp};
 
 pub struct Interpreter {}
 
@@ -28,6 +28,10 @@ impl Interpreter {
                     .map(|expr| self.expression(expr, env))
                     .transpose()?;
                 env.define(name, value.unwrap_or(Value::Nil))
+            }
+            Stmt::Function { name, params, body } => {
+                let func = LoxFunction::new(name.to_owned(), params.clone(), body.clone());
+                env.define(name, Value::Function(func))
             }
             Stmt::Expression(expr) => self.expression(expr, env).map(|_| ()),
             Stmt::If {
@@ -95,7 +99,46 @@ impl Interpreter {
                     (false, LogicalOp::Or) | (true, LogicalOp::And) => self.expression(right, env),
                 }
             }
+            Expr::Call { callee, args } => {
+                let callee = self.expression(callee, env)?;
+                match callee {
+                    Value::Function(fun) => {
+                        let args_res: RuntimeResult<Vec<_>> =
+                            args.iter().map(|expr| self.expression(expr, env)).collect();
+                        let args = args_res?;
+
+                        self.call_func(&fun, args, env)
+                    }
+                    _ => Err(RuntimeError::CallingNonCallable { value: callee }),
+                }
+            }
         }
+    }
+
+    fn call_func(
+        &self,
+        callee: &LoxFunction,
+        args: Vec<Value>,
+        env: &mut Environment,
+    ) -> RuntimeResult<Value> {
+        if callee.arity() != args.len() {
+            return Err(RuntimeError::ArityMismatch {
+                name: callee.name().to_owned(),
+                arity: callee.arity(),
+                num_args: args.len(),
+            });
+        }
+
+        let mut env = env.globals();
+        for (param, arg) in callee.params().iter().zip(args.into_iter()) {
+            env.define(param, arg)?;
+        }
+
+        for stmt in callee.body() {
+            self.statement(stmt, &mut env)?;
+        }
+
+        Ok(Value::Nil)
     }
 
     fn unary(&self, op: UnaryOp, value: &Value) -> RuntimeResult<Value> {
@@ -296,6 +339,19 @@ mod tests {
             temp = a;
             a = b;
         }
+        "#,
+            true,
+        );
+    }
+
+    #[test]
+    fn test_function_stmt() {
+        assert_statement(
+            r#"
+        fun sayHi(first, last) {
+            print "Hi, " + first + " " + last + "!";
+        }
+        sayHi("Dear", "Reader");
         "#,
             true,
         );

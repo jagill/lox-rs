@@ -30,6 +30,8 @@ impl<'a> Parser<'a> {
     pub fn declaration(&mut self) -> ParseResult<Stmt> {
         if self.match_next(TokenType::Var) {
             self.var_decl()
+        } else if self.match_next(TokenType::Fun) {
+            self.func_decl()
         } else {
             self.statement()
         }
@@ -43,6 +45,34 @@ impl<'a> Parser<'a> {
             .transpose()?;
         self.consume(TokenType::Semicolon)?;
         Ok(Stmt::Var { name, initializer })
+    }
+
+    fn func_decl(&mut self) -> ParseResult<Stmt> {
+        let ident = self.consume(Identifier)?.lexeme.to_owned();
+
+        // Params
+        let mut params = Vec::new();
+        self.consume(LeftParen)?;
+        if !self.match_next(RightParen) {
+            params.push(self.consume(Identifier)?.lexeme.to_owned());
+            while let Some(token) = self.advance_only(Comma) {
+                if params.len() >= 255 {
+                    return Err(ParseError::TooManyArguments { line: token.line });
+                }
+                params.push(self.consume(Identifier)?.lexeme.to_owned());
+            }
+            self.consume(RightParen)?;
+        }
+
+        // Body
+        self.consume(LeftBrace)?;
+        let body = self.block_stmts()?;
+
+        Ok(Stmt::Function {
+            name: ident,
+            params,
+            body: body,
+        })
     }
 
     pub fn statement(&mut self) -> ParseResult<Stmt> {
@@ -147,6 +177,15 @@ impl<'a> Parser<'a> {
         let expr = self.expression()?;
         self.consume(TokenType::Semicolon)?;
         Ok(Stmt::Expression(expr))
+    }
+
+    fn block_stmts(&mut self) -> ParseResult<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        while self.peek_type() != Some(TokenType::RightBrace) {
+            statements.push(self.declaration()?);
+        }
+        self.consume(TokenType::RightBrace)?;
+        Ok(statements)
     }
 
     pub fn expression(&mut self) -> ParseResult<Expr> {
@@ -260,7 +299,37 @@ impl<'a> Parser<'a> {
         if self.match_next(Minus) {
             return Ok(Expr::unary(UnaryOp::Minus, self.unary()?));
         }
-        self.primary()
+
+        self.call()
+    }
+
+    fn call(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.primary()?;
+
+        while self.match_next(LeftParen) {
+            expr = self.finish_call(expr)?;
+        }
+
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> ParseResult<Expr> {
+        let mut args = Vec::new();
+        if !self.match_next(RightParen) {
+            args.push(self.expression()?);
+            while let Some(comma) = self.advance_only(Comma) {
+                if args.len() >= 255 {
+                    return Err(ParseError::TooManyArguments { line: comma.line });
+                }
+                args.push(self.expression()?);
+            }
+            self.consume(RightParen)?;
+        }
+
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            args,
+        })
     }
 
     fn primary(&mut self) -> ParseResult<Expr> {
@@ -781,5 +850,34 @@ mod tests {
                 else_branch: None,
             }),
         )
+    }
+
+    #[test]
+    fn test_func_decl() {
+        assert_parse_stmt(
+            r#"fun sayHi(first, last) {
+                print "Hi, " + first + "!";
+            }
+            "#,
+            Ok(Stmt::Function {
+                name: "sayHi".to_owned(),
+                params: vec!["first".to_owned(), "last".to_owned()],
+                body: vec![Stmt::Print(Expr::binary(
+                    Expr::string("Hi, "),
+                    BinaryOp::Add,
+                    Expr::binary(Expr::var("first"), BinaryOp::Add, Expr::string("!")),
+                ))],
+            }),
+        );
+        assert_parse_expr(
+            "callback()(foo)",
+            Ok(Expr::Call {
+                callee: Box::new(Expr::Call {
+                    callee: Box::new(Expr::var("callback")),
+                    args: Vec::new(),
+                }),
+                args: vec![Expr::var("foo")],
+            }),
+        );
     }
 }
