@@ -173,7 +173,7 @@ impl<'a> Parser<'a> {
         let mut expr = self.and()?;
 
         while self.match_next(Or) {
-            expr = Expr::logical(expr, LogicalOp::Or, self.and()?);
+            expr = Expr::logical(expr, LogicalOp::Or, self.or()?);
         }
 
         Ok(expr)
@@ -183,7 +183,7 @@ impl<'a> Parser<'a> {
         let mut expr = self.equality()?;
 
         while self.match_next(And) {
-            expr = Expr::logical(expr, LogicalOp::And, self.equality()?);
+            expr = Expr::logical(expr, LogicalOp::And, self.and()?);
         }
 
         Ok(expr)
@@ -229,11 +229,11 @@ impl<'a> Parser<'a> {
         let left = self.factor()?;
 
         if self.match_next(Minus) {
-            return Ok(Expr::binary(left, BinaryOp::Sub, self.factor()?));
+            return Ok(Expr::binary(left, BinaryOp::Sub, self.term()?));
         }
 
         if self.match_next(Plus) {
-            return Ok(Expr::binary(left, BinaryOp::Add, self.factor()?));
+            return Ok(Expr::binary(left, BinaryOp::Add, self.term()?));
         }
 
         Ok(left)
@@ -243,11 +243,11 @@ impl<'a> Parser<'a> {
         let left = self.unary()?;
 
         if self.match_next(Slash) {
-            return Ok(Expr::binary(left, BinaryOp::Div, self.unary()?));
+            return Ok(Expr::binary(left, BinaryOp::Div, self.factor()?));
         }
 
         if self.match_next(Star) {
-            return Ok(Expr::binary(left, BinaryOp::Mult, self.unary()?));
+            return Ok(Expr::binary(left, BinaryOp::Mult, self.factor()?));
         }
 
         Ok(left)
@@ -509,18 +509,126 @@ mod tests {
         )
     }
 
-    // TODO: Not yet implemented
-    // #[test]
-    // fn test_parse_binary_bool() {
-    //     assert_parse_expr(
-    //         "true or false",
-    //         Ok(Expr::binary(
-    //             Expr::bool(true),
-    //             BinaryOp::Or,
-    //             Expr::bool(false),
-    //         )),
-    //     )
-    // }
+    #[test]
+    fn test_multiple_comparisons() {
+        assert_parse_stmt(
+            r#"1 < 2 < 3;"#,
+            Err(ParseError::UnexpectedToken {
+                actual: Less,
+                line: 1,
+                lexeme: "<".to_owned(),
+                expected: String::new(),
+            }),
+        );
+
+        assert_parse_expr(
+            r#"1 < 2 == 3 > 4"#,
+            Ok(Expr::binary(
+                Expr::binary(Expr::number(1.0), BinaryOp::Less, Expr::number(2.0)),
+                BinaryOp::Equal,
+                Expr::binary(Expr::number(3.0), BinaryOp::Greater, Expr::number(4.0)),
+            )),
+        );
+
+        assert_parse_stmt(
+            r#"1 == 2 == 3;"#,
+            Err(ParseError::UnexpectedToken {
+                actual: EqualEqual,
+                line: 1,
+                lexeme: "=".to_owned(),
+                expected: String::new(),
+            }),
+        );
+    }
+
+    #[test]
+    fn test_multiple_terms() {
+        assert_parse_expr(
+            r#"1 + 2 + 3"#,
+            Ok(Expr::binary(
+                Expr::number(1.0),
+                BinaryOp::Add,
+                Expr::binary(Expr::number(2.0), BinaryOp::Add, Expr::number(3.0)),
+            )),
+        );
+
+        assert_parse_expr(
+            r#"1 * 2 * 3"#,
+            Ok(Expr::binary(
+                Expr::number(1.0),
+                BinaryOp::Mult,
+                Expr::binary(Expr::number(2.0), BinaryOp::Mult, Expr::number(3.0)),
+            )),
+        );
+
+        assert_parse_expr(
+            r#"1 + 2 * 3 + 4"#,
+            Ok(Expr::binary(
+                Expr::number(1.0),
+                BinaryOp::Add,
+                Expr::binary(
+                    Expr::binary(Expr::number(2.0), BinaryOp::Mult, Expr::number(3.0)),
+                    BinaryOp::Add,
+                    Expr::number(4.0),
+                ),
+            )),
+        );
+
+        assert_parse_expr(
+            r#"1 + 2 + 3 + 4"#,
+            Ok(Expr::binary(
+                Expr::number(1.0),
+                BinaryOp::Add,
+                Expr::binary(
+                    Expr::number(2.0),
+                    BinaryOp::Add,
+                    Expr::binary(Expr::number(3.0), BinaryOp::Add, Expr::number(4.0)),
+                ),
+            )),
+        );
+    }
+
+    #[test]
+    fn test_string_concat_multiple_terms() {
+        assert_parse_expr(
+            r#""Hi, " + first + "!""#,
+            Ok(Expr::binary(
+                Expr::string("Hi, "),
+                BinaryOp::Add,
+                Expr::binary(Expr::var("first"), BinaryOp::Add, Expr::string("!")),
+            )),
+        );
+    }
+
+    #[test]
+    fn test_parse_binary_logical() {
+        assert_parse_expr(
+            "true or false",
+            Ok(Expr::logical(
+                Expr::bool(true),
+                LogicalOp::Or,
+                Expr::bool(false),
+            )),
+        );
+
+        assert_parse_expr(
+            "true and false or x",
+            Ok(Expr::logical(
+                Expr::logical(Expr::bool(true), LogicalOp::And, Expr::bool(false)),
+                LogicalOp::Or,
+                Expr::var("x"),
+            )),
+        );
+
+        assert_parse_expr(
+            "a and b or c or d",
+            Ok(Expr::logical(
+                Expr::logical(Expr::var("a"), LogicalOp::And, Expr::var("b")),
+                LogicalOp::Or,
+                Expr::logical(Expr::var("c"), LogicalOp::Or, Expr::var("d")),
+            )),
+        )
+    }
 
     #[test]
     fn test_parse_stmt_expr() {
