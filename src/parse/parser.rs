@@ -143,11 +143,11 @@ impl<'a> Parser<'a> {
                     Some(expr)
                 };
 
-                let increment = if self.match_next(Semicolon) {
+                let increment = if self.match_next(RightParen) {
                     None
                 } else {
                     let expr = self.expression()?;
-                    self.consume(Semicolon)?;
+                    self.consume(RightParen)?;
                     Some(expr)
                 };
 
@@ -850,6 +850,36 @@ mod tests {
                 else_branch: None,
             }),
         )
+    }
+
+    #[test]
+    fn test_for_stmt() {
+        assert_parse_stmt(
+            r#"
+            for (var i = 0; i < 20; i = i + 1) {
+                print fib(i);
+            }
+            "#,
+            Ok(Stmt::Block(vec![
+                Stmt::Var {
+                    name: "i".to_owned(),
+                    initializer: Some(Expr::number(0.)),
+                },
+                Stmt::While {
+                    condition: Expr::binary(Expr::var("i"), BinaryOp::Less, Expr::number(20.)),
+                    body: Box::new(Stmt::Block(vec![
+                        Stmt::Block(vec![Stmt::Print(Expr::Call {
+                            callee: Box::new(Expr::var("fib")),
+                            args: vec![Expr::var("i")],
+                        })]),
+                        Stmt::Expression(Expr::assign(
+                            "i",
+                            Expr::binary(Expr::var("i"), BinaryOp::Add, Expr::number(1.0)),
+                        )),
+                    ])),
+                },
+            ])),
+        );
     }
 
     #[test]
