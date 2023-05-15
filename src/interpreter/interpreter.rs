@@ -70,6 +70,12 @@ impl Interpreter {
                 }
                 Ok(())
             }
+            Stmt::Return { expr } => {
+                let value = expr
+                    .as_ref()
+                    .map_or(Ok(Value::Nil), |exp| self.expression(exp, env))?;
+                Err(RuntimeError::Return { value })
+            }
         }
     }
 
@@ -133,12 +139,19 @@ impl Interpreter {
         for (param, arg) in callee.params().iter().zip(args.into_iter()) {
             env.define(param, arg)?;
         }
-
+        let mut retval = Value::Nil;
         for stmt in callee.body() {
-            self.statement(stmt, &mut env)?;
+            match self.statement(stmt, &mut env) {
+                Ok(()) => (),
+                Err(RuntimeError::Return { value }) => {
+                    retval = value;
+                    break;
+                }
+                Err(err) => return Err(err),
+            }
         }
 
-        Ok(Value::Nil)
+        Ok(retval)
     }
 
     fn unary(&self, op: UnaryOp, value: &Value) -> RuntimeResult<Value> {

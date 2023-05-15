@@ -78,10 +78,11 @@ impl<'a> Parser<'a> {
     pub fn statement(&mut self) -> ParseResult<Stmt> {
         use TokenType::*;
 
-        match self
-            .advance_any_of(&[Print, LeftBrace, If, While, For])
-            .map(|t| t.typ)
-        {
+        let typ = self
+            .advance_any_of(&[Print, LeftBrace, If, While, For, Return])
+            .map(|t| t.typ);
+
+        match typ {
             Some(Print) => {
                 let value = self.expression()?;
                 self.consume(TokenType::Semicolon)?;
@@ -167,6 +168,15 @@ impl<'a> Parser<'a> {
                 }
 
                 Ok(body)
+            }
+            Some(Return) => {
+                let expr = if self.peek_type() == Some(Semicolon) {
+                    None
+                } else {
+                    Some(self.expression()?)
+                };
+                self.consume(Semicolon)?;
+                Ok(Stmt::Return { expr })
             }
             // Expression statement
             _ => self.expr_stmt(),
@@ -907,6 +917,72 @@ mod tests {
                     args: Vec::new(),
                 }),
                 args: vec![Expr::var("foo")],
+            }),
+        );
+    }
+
+    #[test]
+    fn test_if_return() {
+        assert_parse_stmt(
+            r#"
+            if (n <= 1) return n;
+        "#,
+            Ok(Stmt::If {
+                condition: Expr::binary(Expr::var("n"), BinaryOp::LessEqual, Expr::number(1.0)),
+                then_branch: Box::new(Stmt::Return {
+                    expr: Some(Expr::var("n")),
+                }),
+                else_branch: None,
+            }),
+        );
+    }
+
+    #[test]
+    fn test_func_decl_return() {
+        assert_parse_stmt(
+            r#"
+        fun fib(n) {
+            if (n <= 1) return n;
+            return fib(n - 2) + fib(n - 1);
+        }
+        "#,
+            Ok(Stmt::Function {
+                name: "fib".to_owned(),
+                params: vec!["n".to_owned()],
+                body: vec![
+                    Stmt::If {
+                        condition: Expr::binary(
+                            Expr::var("n"),
+                            BinaryOp::LessEqual,
+                            Expr::number(1.0),
+                        ),
+                        then_branch: Box::new(Stmt::Return {
+                            expr: Some(Expr::var("n")),
+                        }),
+                        else_branch: None,
+                    },
+                    Stmt::Return {
+                        expr: Some(Expr::binary(
+                            Expr::Call {
+                                callee: Box::new(Expr::var("fib")),
+                                args: vec![Expr::binary(
+                                    Expr::var("n"),
+                                    BinaryOp::Sub,
+                                    Expr::number(2.0),
+                                )],
+                            },
+                            BinaryOp::Add,
+                            Expr::Call {
+                                callee: Box::new(Expr::var("fib")),
+                                args: vec![Expr::binary(
+                                    Expr::var("n"),
+                                    BinaryOp::Sub,
+                                    Expr::number(1.0),
+                                )],
+                            },
+                        )),
+                    },
+                ],
             }),
         );
     }

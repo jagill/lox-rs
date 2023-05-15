@@ -20,6 +20,8 @@ pub enum RuntimeError {
     },
     #[error("Trying to call a non-callable value: {value}")]
     CallingNonCallable { value: Value },
+    #[error("Return statement not in function call")]
+    Return { value: Value },
 }
 
 impl RuntimeError {

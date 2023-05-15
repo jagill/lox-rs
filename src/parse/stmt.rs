@@ -23,4 +23,7 @@ pub enum Stmt {
         condition: Expr,
         body: Box<Stmt>,
     },
+    Return {
+        expr: Option<Expr>,
+    },
 }
