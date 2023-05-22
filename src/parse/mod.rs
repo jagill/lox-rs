@@ -10,4 +10,4 @@ pub use function::LoxFunction;
 pub use parser::Parser;
 pub use stmt::Stmt;
 
-type ParseResult<T> = Result<T, ParseError>;
+pub type ParseResult<T> = Result<T, ParseError>;

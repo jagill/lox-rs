@@ -2,6 +2,7 @@
 pub mod interpreter;
 pub mod lex;
 pub mod parse;
+pub mod analysis;
 
 use interpreter::{Interpreter, RuntimeError};
 use lex::Scanner;

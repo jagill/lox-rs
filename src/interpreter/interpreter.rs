@@ -4,11 +4,15 @@ use super::Value;
 use super::{Environment, RuntimeError, RuntimeResult};
 use crate::parse::{BinaryOp, Expr, LogicalOp, LoxFunction, Stmt, UnaryOp};
 
-pub struct Interpreter {}
+pub struct Interpreter {
+    locals: HashMap<String, usize>,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            locals: HashMap::new(),
+        }
     }
 
     pub fn interpret(&self, stmts: &[Stmt]) -> RuntimeResult<()> {
@@ -70,7 +74,7 @@ impl Interpreter {
                 }
                 Ok(())
             }
-            Stmt::Return { expr } => {
+            Stmt::Return(expr) => {
                 let value = expr
                     .as_ref()
                     .map_or(Ok(Value::Nil), |exp| self.expression(exp, env))?;
@@ -199,6 +203,10 @@ impl Interpreter {
                 "Can't combine {left_val:?} and {right_val:?} with {op:?}"
             ))),
         }
+    }
+
+    pub fn resolve(&mut self, name: &str, scope_idx: usize) {
+        self.locals.insert(name.to_owned(), scope_idx);
     }
 }
 

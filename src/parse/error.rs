@@ -16,6 +16,8 @@ pub enum ParseError {
     InvalidAssignment { line: usize },
     #[error("Arguments to a function are capped at 255 (line {line})")]
     TooManyArguments { line: usize },
+    #[error("Can't read a local variable in it's own initializer: {name}")]
+    SelfInitializedVar { name: String },
 }
 
 impl ParseError {

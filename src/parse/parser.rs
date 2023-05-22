@@ -176,7 +176,7 @@ impl<'a> Parser<'a> {
                     Some(self.expression()?)
                 };
                 self.consume(Semicolon)?;
-                Ok(Stmt::Return { expr })
+                Ok(Stmt::Return(expr))
             }
             // Expression statement
             _ => self.expr_stmt(),
@@ -929,9 +929,7 @@ mod tests {
         "#,
             Ok(Stmt::If {
                 condition: Expr::binary(Expr::var("n"), BinaryOp::LessEqual, Expr::number(1.0)),
-                then_branch: Box::new(Stmt::Return {
-                    expr: Some(Expr::var("n")),
-                }),
+                then_branch: Box::new(Stmt::Return(Some(Expr::var("n")))),
                 else_branch: None,
             }),
         );
@@ -956,32 +954,28 @@ mod tests {
                             BinaryOp::LessEqual,
                             Expr::number(1.0),
                         ),
-                        then_branch: Box::new(Stmt::Return {
-                            expr: Some(Expr::var("n")),
-                        }),
+                        then_branch: Box::new(Stmt::Return(Some(Expr::var("n")))),
                         else_branch: None,
                     },
-                    Stmt::Return {
-                        expr: Some(Expr::binary(
-                            Expr::Call {
-                                callee: Box::new(Expr::var("fib")),
-                                args: vec![Expr::binary(
-                                    Expr::var("n"),
-                                    BinaryOp::Sub,
-                                    Expr::number(2.0),
-                                )],
-                            },
-                            BinaryOp::Add,
-                            Expr::Call {
-                                callee: Box::new(Expr::var("fib")),
-                                args: vec![Expr::binary(
-                                    Expr::var("n"),
-                                    BinaryOp::Sub,
-                                    Expr::number(1.0),
-                                )],
-                            },
-                        )),
-                    },
+                    Stmt::Return(Some(Expr::binary(
+                        Expr::Call {
+                            callee: Box::new(Expr::var("fib")),
+                            args: vec![Expr::binary(
+                                Expr::var("n"),
+                                BinaryOp::Sub,
+                                Expr::number(2.0),
+                            )],
+                        },
+                        BinaryOp::Add,
+                        Expr::Call {
+                            callee: Box::new(Expr::var("fib")),
+                            args: vec![Expr::binary(
+                                Expr::var("n"),
+                                BinaryOp::Sub,
+                                Expr::number(1.0),
+                            )],
+                        },
+                    ))),
                 ],
             }),
         );
